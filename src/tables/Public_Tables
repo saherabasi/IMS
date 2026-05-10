@@ -1,0 +1,45 @@
+-- =============================================
+-- Schema: pub (Public - جداول عمومی و پایه)
+-- شامل: کشورها، پوزیشن‌های شغلی، کارمندان
+-- =============================================
+create schema pub
+
+-- =============================================
+-- Countries - کشورها
+-- اطلاعات پایه کشورها برای استفاده در سایر جداول
+-- =============================================
+create table Countries (
+    CountryID int primary key identity,
+    CountryName nvarchar(30) not null
+)
+alter schema pub transfer dbo.Countries
+go
+
+-- =============================================
+-- Positions - پوزیشن‌های شغلی
+-- تعریف سمت‌های سازمانی (مدیر انبار، انباردار، ...)
+-- =============================================
+create table pub.Positions(
+    PositionID int primary key identity,
+    PositionName nvarchar(30) not null,
+    Description nvarchar(100),
+    IsActive bit default 1
+)
+go
+
+-- =============================================
+-- Employees - کارمندان
+-- اطلاعات پرسنلی شامل انبار محل خدمت و سمت سازمانی
+-- =============================================
+create table pub.Employees(
+    EmployeeID int primary key identity,
+    WarehouseID int references inv.Warehouses(WarehouseID),
+    FirstName nvarchar(30),
+    LastName nvarchar(30),
+    NationalCode bigint,
+    PositionID int references pub.Positions(PositionID),
+    Email nvarchar(50),
+    PhoneNumber nvarchar(15),
+    HireDate datetime,
+    Salary decimal(18, 2),
+)
