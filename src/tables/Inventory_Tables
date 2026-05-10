@@ -1,0 +1,101 @@
+-- =============================================
+-- Schema: inv (Inventory - مدیریت کالا و انبار)
+-- =============================================
+create schema inv
+go
+
+-- =============================================
+-- Units - واحدهای اندازه‌گیری
+-- تعریف واحدهای پایه مانند عدد، کیلوگرم، متر و غیره
+-- =============================================
+create table inv.Units(
+    UnitID int primary key identity,
+    UnitName nvarchar(15) not null,
+    Symbol nvarchar(10),
+    IsActive bit default 1
+)
+go
+
+-- =============================================
+-- Categories - دسته‌بندی کالاها (ساختار درختی)
+-- هر دسته می‌تواند زیرمجموعه یک دسته دیگر باشد (ParentCategoryID)
+-- =============================================
+create table inv.Categories (
+    CategoryID int primary key identity,
+    CategoryName nvarchar(15) not null,
+    ParentCategoryID int null references inv.Categories(CategoryID),
+    Description nvarchar(100),
+    IsActive bit default 1
+)
+go
+
+-- =============================================
+-- Brands - برندهای کالاها
+-- شامل نام برند، کشور سازنده، وب‌سایت و آدرس
+-- =============================================
+create table inv.Brands (
+    BrandID int primary key identity,
+    BrandName nvarchar(30) not null,
+    CountryID int references Countries(CountryID),
+    Website nvarchar(50),
+    Address nvarchar(150),
+    IsActive bit default 1
+)
+go
+
+-- =============================================
+-- Products - کالاها
+-- اطلاعات اصلی هر کالا شامل کد، نام، دسته‌بندی، برند و واحد
+-- =============================================
+create table inv.Products(
+    ProductID int primary key identity,
+    ProductCode nvarchar(20) not null unique,
+    ProductName nvarchar(50) not null,
+    CategoryID int null references inv.Categories(CategoryID),
+    BrandID int null references inv.Brands(BrandID),
+    UnitID int null references inv.Units(UnitID),
+    Barcode nvarchar(50),
+    Description nvarchar(100),
+    IsActive bit default 1,
+    CreateDate datetime
+)
+go
+
+-- =============================================
+-- Warehouses - انبارها
+-- تعریف انبارهای مختلف با کد، نام، آدرس و تلفن
+-- =============================================
+create table inv.Warehouses(
+    WarehouseID int primary key identity,
+)
+alter table inv.Warehouses add 
+    WarehouseName nvarchar(50) not null,
+    WarehouseCode nvarchar(10) not null unique,
+    Address nvarchar(200),
+    Phone nvarchar(15),
+    IsActive bit default 1,
+    CreatedDate datetime default getdate()
+go
+
+-- =============================================
+-- Stocks - موجودی کالا در هر انبار
+-- مشخص می‌کند هر کالا در هر انبار چه تعداد موجودی دارد
+-- =============================================
+create table inv.Stocks(
+    StockID int primary key identity,
+    ProductID int null references inv.Products(ProductID),
+    WarehouseID int null references inv.Warehouses(WarehouseID),
+    Quantity int default 0
+)
+go
+
+-- =============================================
+-- ProductImage - تصاویر کالاها
+-- ذخیره مسیر تصاویر هر کالا با قابلیت تعیین تصویر اصلی
+-- =============================================
+create table inv.ProductImage (
+    ImageUrlID int primary key identity,
+    ProductID int null references inv.Products(ProductID),
+    ImageUrl nvarchar(200),
+    IsMain bit default 0
+)
