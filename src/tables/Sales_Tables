@@ -1,0 +1,111 @@
+-- =============================================
+-- Schema: sls (Sales - فروش و مشتریان)
+-- =============================================
+create schema sls
+go
+
+-- =============================================
+-- CustomerTypes - انواع مشتری
+-- تعریف سطوح مشتری (عادی، عمده، VIP) با درصد تخفیف پیش‌فرض
+-- =============================================
+create table sls.CustomerTypes(
+    CustomerTypeID int primary key identity,
+    TypeName nvarchar(30) not null,
+    DiscountPercent decimal(5,2) default 0,
+    Description nvarchar(200)
+);
+go
+
+-- =============================================
+-- Customers - مشتریان
+-- اطلاعات فردی مشتری شامل نام، کد ملی، نوع مشتری و آدرس
+-- =============================================
+create table sls.Customers (
+    CustomerID int primary key identity,
+    FirstName nvarchar(30) not null,
+    LastName nvarchar(30) not null,
+    PhoneNumber nvarchar(30) not null,
+    NationalCode nvarchar(15) not null,
+    CustomerTypeID int references sls.CustomerTypes(CustomerTypeID),
+    Address nvarchar(100),
+    registerDate datetime default getdate()
+)
+go
+
+-- =============================================
+-- SalesOrders - سفارشات فروش
+-- ثبت سفارش‌های مشتریان شامل انبار مبدا، تاریخ و وضعیت
+-- =============================================
+create table sls.SalesOrders(
+    SalesOrderID int primary key identity,
+    SalesOrderCode nvarchar(20) not null unique,
+    CustomerID int references sls.Customers(CustomerID),
+    SrcWarehouseID int references inv.Warehouses(WarehouseID),
+    OrderDate datetime default getdate(),
+    Status nvarchar(20) default 'Pending',
+    TotalAmount decimal(18,2) default 0
+)
+go
+
+-- =============================================
+-- SalesOrderDetails - جزئیات سفارش فروش
+-- ردیف‌های هر سفارش شامل کالا، تعداد، قیمت واحد
+-- TotalPrice به‌صورت خودکار محاسبه و ذخیره می‌شود (PERSISTED)
+-- =============================================
+create table sls.SalesOrderDetails(
+    SodID int primary key identity,
+    SalesOrderID int references sls.SalesOrders(SalesOrderID),
+    ProductID int references inv.Products(ProductID),
+    Quantity int not null,
+    UnitPrice decimal(18,2) not null,
+    TotalPrice as Quantity * UnitPrice persisted
+)
+go
+
+-- =============================================
+-- Invoices - فاکتورهای فروش
+-- ثبت فاکتور صادر شده برای مشتری
+-- شامل مبلغ کل، درصد تخفیف و مبلغ نهایی
+-- =============================================
+create table sls.Invoices(
+    InvoiceID  int primary key identity,
+    InvoiceCode nvarchar(20) not null unique,
+    SalesOrderID int references sls.SalesOrders(SalesOrderID),
+    CustomerID int references sls.Customers(CustomerID),
+    InvoiceDate datetime default getdate(),
+    Amount decimal(18,2),
+    DiscountPercent decimal(5,2) default 0,
+    FinalAmount decimal(18,2),
+    Status nvarchar(20) default 'Pending',
+)
+go
+
+-- =============================================
+-- InvoiceDetails - جزئیات فاکتور
+-- ردیف‌های هر فاکتور شامل کالا، تعداد، قیمت واحد
+-- TotalPrice به‌صورت خودکار محاسبه و ذخیره می‌شود (PERSISTED)
+-- =============================================
+create table sls.InvoiceDetails(
+    InvDetailID int primary key identity,
+    InvoiceID int references sls.Invoices(InvoiceID),
+    ProductID int references inv.Products(ProductID),
+    Quantity int not null,
+    UnitPrice decimal(18,2) not null,
+    TotalPrice as Quantity * UnitPrice persisted
+)
+go
+
+-- =============================================
+-- Payments - پرداخت‌های مشتریان
+-- ثبت پرداخت‌های انجام شده بابت فاکتورها
+-- شامل مبلغ، روش پرداخت و وضعیت
+-- =============================================
+create table sls.Payments(
+    PaymentID int primary key identity,
+    InvoiceID int references sls.Invoices(InvoiceID),
+    CustomerID int references sls.Customers(CustomerID),
+    PaymentDate datetime default getdate(),
+    Amount decimal(18,2) not null,
+    PaymentMethod nvarchar(20),
+    Status nvarchar(20) default 'Paid',
+)
