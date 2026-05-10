@@ -1,0 +1,25 @@
+create database [IMS]
+on primary
+( NAME = N'IMS', FILENAME = N'D:\DataBases\IMS\Main\IMS.mdf' , SIZE = 524288KB , MAXSIZE = UNLIMITED, FILEGROWTH = 524288KB ), 
+( NAME = N'IMS_log', FILENAME = N'D:\DataBases\IMS\Log\IMS_log.ldf' , SIZE = 524288KB , MAXSIZE = 2048GB , FILEGROWTH = 524288KB )
+
+GO
+
+
+alter database ims add filegroup FGIndex
+alter database ims add filegroup FGtable
+
+alter database ims add file(
+name = 'FileGroupIndex',
+filename = 'D:\DataBases\IMS\FileGroup/FileGroupIndex.ndf'
+)to filegroup FGIndex
+
+alter database ims add file(
+name = 'FileGroupTable',
+filename = 'D:\DataBases\IMS\FileGroup/FileGroupTable.ndf'
+)to filegroup FGTable
+
+alter database ims modify file (name = 'FileGroupIndex' , size = 524288kb , filegrowth = 524288kb)
+alter database ims modify file (name = 'FileGroupTable' , size = 524288kb , filegrowth = 524288kb)
+
+alter database ims modify filegroup fgtable default
