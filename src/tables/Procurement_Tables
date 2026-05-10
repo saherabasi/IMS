@@ -1,0 +1,94 @@
+-- =============================================
+-- Schema: prc (Procurement - خرید و تأمین)
+-- =============================================
+create schema prc
+go
+
+-- =============================================
+-- Companies - شرکت‌ها
+-- اطلاعات پایه شرکت‌های طرف قرارداد (تأمین‌کننده یا مشتری)
+-- =============================================
+create table prc.Companies(
+    CompanyID int primary key identity,
+    CompanyName nvarchar(30) not null,
+    PhoneNumber nvarchar(15) not null,
+    Address nvarchar(150) not null,
+    IsActive bit default 1
+)
+go
+
+-- =============================================
+-- Suppliers - تأمین‌کنندگان
+-- اطلاعات اصلی تأمین‌کننده شامل کد یکتا و وضعیت فعال بودن
+-- جزئیات بیشتر در جدول SupplierDetails ذخیره می‌شود
+-- =============================================
+create table prc.Suppliers(
+    SupplierID int primary key identity,
+    SupplierCode nvarchar(20) not null unique,
+    CompanyID int references prc.Companies(CompanyID),
+    IsActive bit default 1,
+    CreateDate datetime default getdate()
+)
+go
+
+-- =============================================
+-- SupplierDetails - مشخصات تکمیلی تأمین‌کننده
+-- اطلاعات تماس، آدرس، کشور و شخص مخاطب
+-- =============================================
+create table prc.SupplierDetails(
+    SuppDetailID int primary key identity,
+    SupplierID int references prc.Suppliers(SupplierID),
+    ContactPerson nvarchar(50),
+    Phone nvarchar(30),
+    Email nvarchar(30),
+    Address nvarchar(150) not null,
+    CountryID int references pub.Countries(CountryID)
+)
+go
+
+-- =============================================
+-- PurchaseOrders - سفارشات خرید
+-- ثبت سفارش‌های خرید از تأمین‌کنندگان
+-- شامل انبار مقصد، تاریخ سفارش و وضعیت
+-- =============================================
+create table prc.PurchaseOrders(
+    PurchaseOrderID int primary key identity,
+    PurchaseOrderCode nvarchar(20) not null unique,
+    SupplierID int references prc.Suppliers(SupplierID),
+    DestWarehouseID int references inv.Warehouses(WarehouseID),
+    OrderDate datetime default getdate(),
+    Status nvarchar(20) default 'Pending',
+    TotalAmount decimal(18,2) default 0
+)
+go
+
+-- =============================================
+-- PurchaseOrderDetails - جزئیات سفارش خرید
+-- ردیف‌های هر سفارش شامل کالا، تعداد، قیمت واحد
+-- TotalPrice به‌صورت خودکار محاسبه و ذخیره می‌شود (PERSISTED)
+-- =============================================
+create table prc.PurchaseOrderDetails(
+    PodID int primary key identity,
+    PurchaseOrderID int references prc.PurchaseOrders(PurchaseOrderID),
+    ProductID int references inv.Products(ProductID),
+    Quantity int not null,
+    UnitPrice decimal(18,2) not null,
+    TotalPrice as Quantity * UnitPrice persisted
+)
+go
+
+-- =============================================
+-- GoodsReceipts - رسید کالا به انبار
+-- ثبت دریافت کالاهای سفارش داده شده
+-- شامل کالای دریافت شده، تعداد، تاریخ رسید و وضعیت
+-- =============================================
+create table prc.GoodsReceipts (
+    GoodsReceiptID int primary key identity,
+    ReceiptCode nvarchar(20) not null unique,
+    PurchaseOrderID int references prc.PurchaseOrders(PurchaseOrderID),
+    WarehouseID int references inv.Warehouses(WarehouseID),
+    ProductID int references inv.Products(ProductID),
+    Quantity int not null,
+    ReceiptDate datetime default getdate(),
+    Status nvarchar(20) default 'Receive'
+)
