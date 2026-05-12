@@ -1,0 +1,74 @@
+-- =============================================
+-- Schema: fnc (Finance - مالی و حسابداری)
+-- =============================================
+create schema fnc
+go
+
+-- =============================================
+-- TransactionTypes - انواع تراکنش مالی
+-- تعریف انواع تراکنش‌های مالی (فروش، خرید، حقوق، ...)
+-- =============================================
+create table fnc.TransactionTypes(
+    TransactionTypeID int identity primary key,
+    TransactionType nvarchar(20) not null,
+    IsActive bit default 1
+)
+go
+
+-- =============================================
+-- Accounts - حساب‌های مالی
+-- حساب‌های مالی شرکت شامل صندوق، بانک، درآمد و هزینه
+-- =============================================
+create table fnc.Accounts(
+    AccountID int identity primary key,
+    AccountNumber nvarchar(20) not null unique,
+    AccountName nvarchar(20) not null,
+    AccountType nvarchar(20) not null,
+    Currency nvarchar(20) not null default 'IRR',
+    Balance decimal(18,2) default 0,
+    IsActive bit default 1,
+    CreateDate datetime default getdate()
+)
+go
+
+-- =============================================
+-- Transactions - تراکنش‌های مالی
+-- ثبت تمام تراکنش‌های مالی (واریز و برداشت)
+-- شامل ارجاع به سفارش/فاکتور و مرکز هزینه
+-- =============================================
+create table fnc.Transactions(
+    TransactionID int identity primary key,
+    AccountID int references fnc.Accounts(AccountID),
+    TransactinTypeID int references fnc.TransactionTypes(TransactionTypeID),
+    Amount decimal(18,2) not null,
+    ReferenceID int,
+    ReferenceType nvarchar(20),
+    Description nvarchar(100),
+    TransactionDate datetime default getdate()
+)
+alter table fnc.Transactions add CostCenterID int null references fnc.CostCenters(CostCenterID)
+go
+
+-- =============================================
+-- CostCenters - مراکز هزینه
+-- بخش‌های مختلف شرکت که هزینه یا درآمد به آن‌ها تعلق می‌گیرد
+-- =============================================
+create table fnc.CostCenters(
+    CostCenterID int identity primary key,
+    CostCenterName nvarchar(50) not null,
+    Description nvarchar(100),
+    IsActive bit default 1,
+)
+go
+
+-- =============================================
+-- Taxes - مالیات‌ها
+-- تعریف انواع مالیات با نرخ درصدی
+-- =============================================
+create table fnc.Taxes(
+    TaxID int identity primary key,
+    TaxName nvarchar(20) not null,
+    taxRate decimal(5,2) not null,
+    Description nvarchar(100),
+    IsActive bit default 1,
+)
