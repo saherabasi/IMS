@@ -1,0 +1,80 @@
+-- =============================================
+-- Schema: usr (Users - کاربران و امنیت)
+-- شامل: نقش‌ها، کاربران، دسترسی‌ها، نشست‌ها
+-- =============================================
+create schema usr
+go
+
+-- =============================================
+-- Roles - نقش‌های کاربران
+-- تعریف سطوح دسترسی (مدیر، انباردار، فروشنده، حسابدار)
+-- =============================================
+create table usr.Roles(
+    RoleID int identity primary key,
+    RoleName nvarchar(20) not null,
+    Description nvarchar(100),
+    IsActive bit default 1
+)
+go
+
+-- =============================================
+-- Users - کاربران سیستم
+-- اطلاعات لاگین کاربران شامل نام کاربری، رمز عبور و ارتباط با کارمند
+-- =============================================
+create table usr.Users(
+    UserID int identity primary key,
+    EmployeeID int references pub.employees(EmployeeID),
+    Username nvarchar(30) not null,
+    Password nvarchar(150) not null,
+    Email nvarchar(50),
+    LastLogin datetime,
+    IsActive bit default 1,
+    CreateDate datetime default getdate()
+)
+go
+
+-- =============================================
+-- UserRoles - نقش‌های اختصاص داده شده به کاربران
+-- هر کاربر می‌تواند چندین نقش داشته باشد
+-- =============================================
+create table usr.UserRoles(
+    UserRoleID int identity primary key,
+    UserID int references usr.Users(UserID),
+    RoleID int references usr.Roles(RoleID)
+)
+go
+
+-- =============================================
+-- Permissions - دسترسی‌های سیستم
+-- تعریف تک‌تک دسترسی‌های قابل اعمال در سیستم
+-- =============================================
+create table usr.Permissions(
+    PermissionID int identity primary key,
+    PermissionName nvarchar(50) not null,
+    Description nvarchar(100),
+    IsActive bit default 1
+)
+go
+
+-- =============================================
+-- RolePermissions - دسترسی‌های اختصاص داده شده به هر نقش
+-- مشخص می‌کند هر نقش چه دسترسی‌هایی دارد
+-- =============================================
+create table RolePermissions(
+    RolePermissionID int identity primary key,
+    RoleID int references usr.Roles(RoleID),
+    PermissionID int references usr.Permissions(PermissionID)
+)
+go
+
+-- =============================================
+-- UserSessions - نشست‌های ورود کاربران
+-- ثبت زمان ورود، خروج و آی‌پی کاربر برای امنیت
+-- =============================================
+create table usr.UserSessions(
+    SessionID int identity primary key,
+    UserID int references usr.Users(UserID),
+    LoginTime datetime default getdate(),
+    LogoutTime datetime,
+    IPAddress nvarchar(15)
+)
