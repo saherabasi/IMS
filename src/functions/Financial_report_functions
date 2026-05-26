@@ -1,0 +1,99 @@
+-- =============================================
+-- Schema: fnc (Finance - توابع گزارشات مالی)
+-- =============================================
+
+-- =============================================
+-- fn_GetDailySalesReport - گزارش فروش روزانه
+-- ورودی: تاریخ
+-- خروجی: جدول فاکتورهای صادر شده در آن تاریخ
+-- =============================================
+create function fnc.fn_GetDailySalesReport(@Date date)
+returns table
+as return(
+    select 
+        i.InvoiceCode,
+        i.SalesOrderID,
+        i.InvoiceDate,
+        i.FinalAmount
+    from sls.Invoices i
+    where cast(InvoiceDate as date) = @Date
+)
+go
+
+-- =============================================
+-- fn_GetMonthlyProfit - سود ماهانه (فروش - خرید)
+-- ورودی: سال + ماه
+-- خروجی: سود خالص ماه
+-- =============================================
+create function fnc.fn_GetMonthlyProfit(@Year int, @Month int)
+returns decimal(18,2)
+as begin
+    declare @TotalPurchase decimal(18,2)
+    declare @TotalInvoice decimal(18,2)
+    
+    select @TotalPurchase = isnull(sum(po.TotalAmount), 0)
+    from prc.PurchaseOrders po
+    where year(po.OrderDate) = @Year and month(po.OrderDate) = @Month
+    
+    select @TotalInvoice = isnull(sum(i.FinalAmount), 0) 
+    from sls.Invoices i
+    where year(i.InvoiceDate) = @Year and month(i.InvoiceDate) = @Month
+    
+    return @TotalInvoice - @TotalPurchase 
+end
+go
+
+-- =============================================
+-- fn_GetWarehouseReport - گزارش موجودی یک انبار
+-- ورودی: شناسه انبار
+-- خروجی: جدول کالاهای موجود در انبار با نام و تعداد
+-- =============================================
+create function fnc.fn_GetWarehouseReport(@WarehouseID int)
+returns table
+as return(
+    select 
+        w.WarehouseID,
+        w.WarehouseName,
+        w.WarehouseCode,
+        p.ProductName,
+        s.Quantity
+    from inv.Warehouses w
+    inner join inv.Stocks s on w.WarehouseID = s.WarehouseID
+    inner join inv.Products p on s.ProductID = p.ProductID
+    where w.WarehouseID = @WarehouseID
+)
+go
+
+-- =============================================
+-- fn_GetMonthlySales - جمع فروش یک ماه
+-- ورودی: سال + ماه
+-- خروجی: مجموع مبالغ نهایی فاکتورها
+-- =============================================
+create function fnc.fn_GetMonthlySales(@Year int, @Month int)
+returns decimal(18,2)
+as begin 
+    return(
+        select isnull(sum(i.FinalAmount), 0)
+        from sls.Invoices i
+        where year(i.InvoiceDate) = @Year and month(i.InvoiceDate) = @Month
+    )
+end
+go
+
+-- =============================================
+-- fn_GetTaxReport - گزارش مالیات ماهانه
+-- محاسبه مالیات برای هر نوع مالیات فعال بر اساس فروش ماه
+-- ورودی: سال + ماه
+-- خروجی: جدول شامل نام مالیات، نرخ، فروش ماه و مبلغ مالیات
+-- =============================================
+create function fnc.fn_GetTaxReport(@Year int, @Month int)
+returns table
+as return(
+    select
+        t.TaxName,
+        t.TaxRate,
+        fnc.fn_GetMonthlySales(@Year, @Month) as MonthlySales,
+        fnc.fn_CalcTax(fnc.fn_GetMonthlySales(@Year, @Month), t.TaxRate) as TaxAmount
+    from fnc.Taxes t 
+    where t.IsActive = 1
+)
