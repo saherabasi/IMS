@@ -1,0 +1,110 @@
+-- =============================================
+-- ProductLog - لاگ تغییرات محصولات
+-- ثبت تمام عملیات INSERT, UPDATE, DELETE روی جدول Products
+-- =============================================
+CREATE table inv.ProductLog(
+	[ProductLogID] [int] IDENTITY(1,1) primary key,
+	[ProductID] int references inv.Products(ProductID),
+	[ProductCode] nvarchar(20) NOT NULL,
+	[ProductName] nvarchar(50) NOT NULL,
+	[CategoryID] int NULL,
+	[BrandID] int NULL,
+	[UnitID] int NULL,
+	[Barcode] nvarchar(50) NULL,
+	[Description] nvarchar(100) NULL,
+	[IsActive] bit NULL,
+	ActionType nvarchar(20) not null ,
+	[CreateDate] datetime NULL,
+)
+go
+
+-- =============================================
+-- CustomerLog - لاگ تغییرات مشتریان
+-- ثبت تمام عملیات INSERT, UPDATE, DELETE روی جدول Customers
+-- =============================================
+create table sls.CustomerLog(
+	[CustomerLogID] int IDENTITY(1,1) primary key ,
+	[CustomerID] int references sls.customers(CustomerID),
+	[FirstName] nvarchar(30) NOT NULL,
+	[LastName] nvarchar(30) NOT NULL,
+	[PhoneNumber] nvarchar(30) NOT NULL,
+	[NationalCode] nvarchar(15) NOT NULL,
+	[CustomerTypeID] int NULL,
+	[Address] nvarchar(100) NULL,
+	ActionType nvarchar(20) not null ,
+	[CreateDate] datetime NULL,
+)
+go
+
+-- =============================================
+-- SupplierLog - لاگ تغییرات تأمین‌کنندگان
+-- ثبت تمام عملیات INSERT, UPDATE, DELETE روی جدول Suppliers
+-- =============================================
+create table prc.SupplierLog (
+    SupplierLogID int identity primary key,
+    SupplierID int references prc.Suppliers(SupplierID),
+    SupplierCode nvarchar(20) not null,
+    CompanyID int null,
+    ContactPerson nvarchar(50) null,
+    Phone nvarchar(30) null,
+    Email nvarchar(30) null,
+    Address nvarchar(150) null,
+    CountryID int null,
+    ActionType nvarchar(10) not null,
+    CreateDate datetime default getdate()
+)
+go
+
+-- =============================================
+-- UserLog - لاگ تغییرات کاربران سیستم
+-- ثبت تمام عملیات INSERT, UPDATE, DELETE روی جدول Users
+-- =============================================
+create table usr.UserLog (
+    UserLogID int identity primary key,
+    UserID int references usr.Users(UserID),
+    EmployeeID int null,
+    Username nvarchar(30) not null,
+    Email nvarchar(50) null,
+    IsActive bit null,
+    ActionType nvarchar(10) not null,
+    CreateDate datetime default getdate()
+)
+go
+
+-- =============================================
+-- CategoryLog - لاگ تغییرات دسته‌بندی‌ها
+-- ثبت تمام عملیات INSERT, UPDATE, DELETE روی جدول Categories
+-- =============================================
+create table inv.CategoryLog (
+    CategoryLogID int identity primary key,
+    CategoryID int references inv.Categories(CategoryID),
+    CategoryName nvarchar(50) not null,
+    ParentCategoryID int null,
+    Description nvarchar(200) null,
+    IsActive bit null,
+    ActionType nvarchar(10) not null,
+    CreateDate datetime default getdate()
+)
+go
+
+-- =============================================
+-- BrandLog - لاگ تغییرات برندها
+-- ثبت تمام عملیات INSERT, UPDATE, DELETE روی جدول Brands
+-- =============================================
+create table inv.BrandLog (
+    BrandLogID int identity primary key,
+    BrandID int references inv.Brands(BrandID),
+    BrandName nvarchar(30) not null,
+    CountryID int null,
+    Website nvarchar(50) null,
+    Address nvarchar(150) null,
+    IsActive bit null,
+    ActionType nvarchar(10) not null,
+    CreateDate datetime default getdate()
+);
+go
+
+-- =============================================
+-- Employees - اضافه شدن ستون نرخ پورسانت
+-- =============================================
+alter table pub.employees add CommissionRate decimal(5,2) default 0
