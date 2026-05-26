@@ -1,0 +1,58 @@
+-- =============================================
+-- Schema: dbo (General - توابع عمومی و کمکی)
+-- =============================================
+
+-- =============================================
+-- fn_SearchProduct - جستجوی کالا با کد، نام یا بارکد
+-- ورودی: عبارت جستجو
+-- خروجی: جدول کالاهای منطبق
+-- =============================================
+create function dbo.fn_SearchProduct(@SearchTerm nvarchar(50))
+returns table 
+as return(
+    select * from inv.Products p
+    where p.ProductCode like '%' + @SearchTerm + '%'
+    or p.ProductName like '%' + @SearchTerm + '%'
+    or p.Barcode like '%' + @SearchTerm + '%'
+)
+go
+
+-- =============================================
+-- fn_IsUserActive - بررسی فعال بودن کاربر
+-- ورودی: شناسه کاربر
+-- خروجی: فعال / غیرفعال / نامشخص / کاربر یافت نشد
+-- =============================================
+create function dbo.fn_IsUserActive(@UserID int)
+returns nvarchar(20)
+as begin
+    if not exists (select 1 from usr.Users where UserID = @UserID)
+        return N'کاربر یافت نشد'
+    
+    declare @Status bit = (select IsActive from usr.Users where UserID = @UserID)
+    
+    return case 
+        when @Status = 1 then N'فعال' 
+        when @Status is null then N'نامشخص'
+        else N'غیرفعال' 
+    end
+end
+go
+
+-- =============================================
+-- fn_GetUserFullName - نام کامل کاربر از روی اطلاعات کارمند
+-- ورودی: شناسه کاربر
+-- خروجی: نام و نام خانوادگی فارسی
+-- =============================================
+create function dbo.fn_GetUserFullName(@UserID int)
+returns nvarchar(50)
+as begin
+    if not exists (select 1 from usr.Users where UserID = @UserID)
+        return N'کاربر یافت نشد'
+    
+    return(
+        select e.FirstName + N' ' + e.LastName as FullName
+        from usr.Users u
+        inner join pub.Employees e on u.EmployeeID = e.EmployeeID
+    )
+end
+go
