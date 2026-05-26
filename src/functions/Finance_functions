@@ -1,0 +1,90 @@
+-- =============================================
+-- Schema: fnc (Finance - توابع مالی و محاسباتی)
+-- =============================================
+
+-- =============================================
+-- fn_CalcDiscount - محاسبه مبلغ پس از کسر تخفیف
+-- ورودی: مبلغ اولیه + درصد تخفیف
+-- خروجی: مبلغ نهایی پس از کسر تخفیف
+-- =============================================
+create or alter function fnc.fn_CalcDiscount(@Price decimal(18,2), @Discount decimal(5,2))
+returns decimal(18,2)
+as begin
+    declare @Dis decimal(18,2) 
+    declare @res decimal(18,2) 
+    set @Dis = (@Price * @Discount) / 100
+    set @res = @Price - @Dis
+    return @res
+end
+go
+
+-- =============================================
+-- fn_CalcTax - محاسبه مبلغ مالیات
+-- ورودی: مبلغ + نرخ مالیات (درصد)
+-- خروجی: مبلغ مالیات
+-- =============================================
+create or alter function fnc.fn_CalcTax(@Amount decimal(18,2), @TaxRate decimal(5,2))
+returns decimal(18,2)
+as begin
+    declare @Rate decimal(18,2) 
+    set @Rate = (@Amount * @TaxRate) / 100
+    return @Rate
+end
+go
+
+-- =============================================
+-- fn_GetInvoiceTotal - محاسبه مبلغ نهایی فاکتور
+-- ورودی: شناسه فاکتور
+-- خروجی: مبلغ نهایی پس از کسر تخفیف
+-- =============================================
+create or alter function fnc.fn_GetInvoiceTotal(@InvoiceID int)
+returns decimal(18,2)
+as begin
+    if not exists (select 1 from sls.Invoices where InvoiceID = @InvoiceID)
+        return 0
+    
+    declare @TotalPrice decimal(18,2) = (select isnull(sum(TotalPrice), 0) from sls.InvoiceDetails where InvoiceID = @InvoiceID)
+    declare @DiscountPercent decimal(5,2) = (select DiscountPercent from sls.Invoices where InvoiceID = @InvoiceID)
+    
+    return fnc.fn_CalcDiscount(@TotalPrice, @DiscountPercent)
+end
+go
+
+-- =============================================
+-- fn_GetAccountBalance - موجودی یک حساب مالی
+-- ورودی: شناسه حساب
+-- خروجی: موجودی فعلی حساب
+-- =============================================
+create or alter function fnc.fn_GetAccountBalance(@AccountID int)
+returns decimal(18,2)
+as begin
+    return(
+        select Balance from fnc.Accounts where AccountID = @AccountID
+    )
+end
+go
+
+-- =============================================
+-- fn_GetTotalPurchase - جمع کل خرید در بازه زمانی
+-- ورودی: تاریخ شروع + تاریخ پایان
+-- خروجی: مجموع مبالغ سفارشات خرید
+-- =============================================
+create or alter function fnc.fn_GetTotalPurchase(@Year int, @Month int)
+returns decimal(18,2)
+as begin
+    return (
+        select isnull(sum(TotalAmount), 0) from prc.PurchaseOrders 
+        where YEAR(OrderDate) = @Year and month(OrderDate) = @Month
+    )
+end
+go
+
+create or alter function fnc.GetCountSalesOrder(@Year int, @Month int)
+returns int
+as begin
+	return(
+		select count(*) from sls.SalesOrders 
+		where Status = 'Completed' and YEAR(OrderDate) = @Year and month(OrderDate) = @Month
+	)
+end
+go
