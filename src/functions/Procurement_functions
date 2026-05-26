@@ -1,0 +1,67 @@
+-- =============================================
+-- Schema: prc (Procurement - توابع خرید و تأمین)
+-- =============================================
+
+-- =============================================
+-- fn_GetSupplierTotalPurchase - جمع کل خرید از یک تأمین‌کننده
+-- ورودی: شناسه تأمین‌کننده
+-- خروجی: مجموع مبالغ سفارشات خرید
+-- =============================================
+create function prc.fn_getSupplierTotalPurchase(@SupplierID int)
+returns decimal(18,2)
+as begin
+    return (
+        select isnull(sum(po.TotalAmount), 0)
+        from prc.PurchaseOrders po
+        where po.SupplierID = @SupplierID
+    )
+end
+go
+
+-- =============================================
+-- fn_GetPendingOrders - سفارشات خرید در انتظار
+-- ورودی: ندارد
+-- خروجی: جدول سفارشات با وضعیت Pending
+-- =============================================
+create function prc.fn_GetPendingOrders()
+returns table
+as return(
+    select * from prc.PurchaseOrders po
+    where po.Status = 'Pending'
+)
+go
+
+-- =============================================
+-- fn_GetProductAveragePrice - میانگین قیمت خرید یک کالا در بازه زمانی
+-- ورودی: شناسه کالا + تاریخ شروع + تاریخ پایان
+-- خروجی: میانگین قیمت خرید واحد
+-- =============================================
+create function prc.fn_GetProductAveragePrice(@ProductID int, @BeginDate date, @EndDate date)
+returns decimal(18,2)
+as begin
+    return(
+        select avg(pod.UnitPrice)
+        from prc.PurchaseOrderDetails pod
+        inner join prc.PurchaseOrders po on pod.PurchaseOrderID = po.PurchaseOrderID
+        where pod.ProductID = @ProductID
+        and cast(po.OrderDate as date) between @BeginDate and @EndDate
+    )
+end
+go
+
+-- =============================================
+-- fn_GetReceiptStatus - وضعیت رسید کالا
+-- ورودی: شناسه رسید
+-- خروجی: وضعیت رسید یا پیام خطا
+-- =============================================
+create function prc.fn_GetReceiptStatus(@ReceiptID int)
+returns nvarchar(30)
+as begin
+    if not exists (select 1 from prc.GoodsReceipts where GoodsReceiptID = @ReceiptID)
+        return N'شناسه رسید وجود ندارد'
+    
+    return (
+        select Status from prc.GoodsReceipts where GoodsReceiptID = @ReceiptID
+    )
+end
+go
