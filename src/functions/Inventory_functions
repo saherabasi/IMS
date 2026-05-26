@@ -1,0 +1,108 @@
+-- =============================================
+-- Schema: inv (Inventory - توابع موجودی و انبار)
+-- =============================================
+
+-- =============================================
+-- fn_GetStockQuantity - موجودی یک کالا در یک انبار خاص
+-- ورودی: شناسه کالا + شناسه انبار
+-- خروجی: تعداد موجودی
+-- =============================================
+create function inv.fn_GetStockQuantity(@ProductID int, @WarehouseID int)
+returns int 
+as begin
+    if not exists (select 1 from inv.Stocks where ProductID = @ProductID and WarehouseID = @WarehouseID)
+        return 0
+    return(
+        select Quantity from inv.Stocks where ProductID = @ProductID and WarehouseID = @WarehouseID
+    )
+end
+go
+
+-- =============================================
+-- fn_GetTotalStock - موجودی کل یک کالا در همه انبارها
+-- ورودی: شناسه کالا
+-- خروجی: جمع موجودی در تمام انبارها
+-- =============================================
+create function inv.fn_GetTotalStock(@ProductID int)
+returns int 
+as begin
+    if not exists (select 1 from inv.Stocks where ProductID = @ProductID)
+        return 0
+    return(
+        select isnull(sum(Quantity), 0) from inv.Stocks where ProductID = @ProductID
+    )
+end
+go
+
+-- =============================================
+-- fn_GetLowStockProducts - کالاهای زیر حداقل موجودی
+-- ورودی: حداقل تعداد موجودی
+-- خروجی: جدول کالاهای با موجودی کمتر از مقدار ورودی
+-- =============================================
+create function inv.fn_GetLowStockProducts(@Quantity int)
+returns table
+as return(
+    select * from inv.Stocks where Quantity <= @Quantity
+)
+go
+
+-- =============================================
+-- fn_GetProductValue - ارزش ریالی موجودی یک کالا
+-- فرمول: موجودی کل × آخرین قیمت خرید
+-- ورودی: شناسه کالا
+-- خروجی: ارزش ریالی کل موجودی
+-- =============================================
+create function inv.fn_GetProductValue(@ProductID int)
+returns decimal(18,2)
+as begin
+    declare @Quantity int = (select isnull(sum(Quantity), 0) from inv.Stocks where ProductID = @ProductID)
+    declare @UnitPrice decimal(18,2) = (
+        select top (1) UnitPrice from prc.PurchaseOrderDetails pod
+        inner join prc.PurchaseOrders po on pod.PurchaseOrderID = po.PurchaseOrderID
+        where pod.ProductID = @ProductID
+        order by po.OrderDate desc
+    )
+    declare @res decimal(18,2) = @Quantity * isnull(@UnitPrice, 0)
+    return @res
+end
+go
+
+-- =============================================
+-- fn_GetWarehouseValue - ارزش کل موجودی یک انبار
+-- مجموع (موجودی هر کالا × آخرین قیمت خرید آن)
+-- ورودی: شناسه انبار
+-- خروجی: ارزش ریالی کل موجودی انبار
+-- =============================================
+create or alter function inv.fn_GetWarehouseValue(@WarehouseID int)
+returns decimal(18,2)
+as begin
+    return (
+        select isnull(sum(s.Quantity * isnull(p.LastPrice, 0)), 0)
+        from inv.Stocks s
+        cross apply (
+            select top(1) pod.UnitPrice as LastPrice
+            from prc.PurchaseOrderDetails pod
+            inner join prc.PurchaseOrders po on pod.PurchaseOrderID = po.PurchaseOrderID
+            where pod.ProductID = s.ProductID
+            order by po.OrderDate desc
+        ) p
+        where s.WarehouseID = @WarehouseID
+    )
+end
+go
+
+-- =============================================
+-- fn_GetStockTurnover - گردش موجودی یک کالا
+-- مجموع قدر مطلق تغییرات موجودی (فروش + خرید + مرجوعی)
+-- ورودی: شناسه کالا
+-- خروجی: تعداد کل گردش موجودی
+-- =============================================
+create or alter function inv.fn_GetStockTurnover(@ProductID int)
+returns int
+as begin
+    return (
+        select isnull(sum(abs(ChangeQuantity)), 0)
+        from log.StockLogs
+        where ProductID = @ProductID
+    )
+end
