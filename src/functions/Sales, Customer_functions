@@ -1,0 +1,124 @@
+-- =============================================
+-- Schema: sls (Sales - توابع فروش و مشتریان)
+-- =============================================
+
+-- =============================================
+-- fn_GetTotalCustomerPurchase - جمع کل خرید یک مشتری
+-- ورودی: شناسه مشتری
+-- خروجی: مجموع مبالغ نهایی فاکتورهای مشتری
+-- =============================================
+create function sls.fn_GetTotalCustomerPurchase(@CustomerID int)
+returns decimal(18,2)
+as begin
+    return (
+        select isnull(sum(FinalAmount), 0) from sls.Invoices
+        where CustomerID = @CustomerID
+    )
+end
+go
+
+-- =============================================
+-- fn_GetCustomerRank - رتبه‌بندی مشتری بر اساس مجموع خرید
+-- رتبه‌بندی: طلایی (۱-۳)، نقره‌ای (۴-۷)، برنزی (۸-۱۰)، عادی (بقیه)
+-- ورودی: شناسه مشتری
+-- خروجی: عنوان رتبه به فارسی
+-- =============================================
+create function sls.fn_GetCustomerRank(@CustomerID int)
+returns nvarchar(20)
+as begin
+    declare @Res nvarchar(20) = 'مشتری عادی'
+    declare @Rank int
+    ;with cte as(
+        select top 10
+            i.CustomerID,
+            isnull(sum(i.FinalAmount), 0) as Final,
+            row_number() over(order by sum(i.FinalAmount) desc) as RankNumber
+        from sls.Invoices i 
+        group by i.CustomerID
+    )
+    select @Rank = RankNumber from cte where CustomerID = @CustomerID
+    
+    if @Rank is null
+        set @Res = 'مشتری عادی'
+    else if @Rank between 1 and 3 
+        set @Res = 'مشتری طلایی'
+    else if @Rank between 4 and 7 
+        set @Res = 'مشتری نقره ای'
+    else if @Rank between 8 and 10 
+        set @Res = 'مشتری برنزی'
+    
+    return @Res
+end
+go
+
+-- =============================================
+-- fn_GetBestSellingProducts - کالاهای پرفروش در بازه زمانی
+-- ورودی: تاریخ شروع، تاریخ پایان، تعداد (پیش‌فرض ۱۰)
+-- خروجی: جدول شامل شناسه کالا و تعداد فروش
+-- =============================================
+create function sls.fn_GetBestSellingProducts(@BeginDate date, @EndDate date, @Top int = 10)
+returns table 
+as return(
+    select top (@Top)
+        id.ProductID,
+        sum(id.Quantity) as TotalQuantity
+    from sls.InvoiceDetails id 
+    inner join sls.Invoices i on id.InvoiceID = i.InvoiceID
+    where cast(i.InvoiceDate as date) between @BeginDate and @EndDate
+    group by id.ProductID
+    order by TotalQuantity desc
+)
+go
+
+-- =============================================
+-- fn_GetPendingPayments - پرداخت‌های معوق (فاکتورهای در انتظار)
+-- ورودی: شناسه مشتری (اختیاری - NULL یعنی همه)
+-- خروجی: جدول فاکتورهای با وضعیت Pending
+-- =============================================
+create function sls.fn_GetPendingPayments(@CustomerID int = null)
+returns table
+as return(
+    select 
+        InvoiceID,
+        CustomerID,
+        InvoiceDate,
+        FinalAmount
+    from sls.Invoices i 
+    where i.Status = 'Pending' 
+    and (@CustomerID is null or CustomerID = @CustomerID)
+)
+go
+
+-- =============================================
+-- fn_GetOrderStatus - وضعیت یک سفارش فروش
+-- ورودی: شناسه سفارش
+-- خروجی: وضعیت سفارش یا پیام خطا
+-- =============================================
+create function sls.fn_GetOrderStatus(@SalesOrderID int)
+returns nvarchar(20)
+as begin 
+    if not exists (select 1 from sls.SalesOrders where SalesOrderID = @SalesOrderID)
+        return N'سفارش یافت نشد'
+    
+    return (
+        select Status from sls.SalesOrders where SalesOrderID = @SalesOrderID
+    )
+end
+go
+
+-- =============================================
+-- fn_GetInvoiceStatus - وضعیت یک فاکتور
+-- ورودی: شناسه فاکتور
+-- خروجی: وضعیت فاکتور یا پیام خطا
+-- =============================================
+create function sls.fn_GetInvoiceStatus(@InvoiceID int)
+returns nvarchar(20)
+as begin 
+    if not exists (select 1 from sls.Invoices where InvoiceID = @InvoiceID)
+        return N'فاکتور یافت نشد'
+    
+    return (
+        select Status from sls.Invoices where InvoiceID = @InvoiceID
+    )
+end
+go
