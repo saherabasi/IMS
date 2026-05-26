@@ -1,0 +1,85 @@
+-- =============================================
+-- Schema: log (لاگ و گزارشات)
+-- شامل: لاگ تغییرات، لاگ ورود، لاگ موجودی، لاگ خطاها، اعلان‌ها
+-- =============================================
+create schema log
+go
+
+-- =============================================
+-- AuditLogs - لاگ کلی تغییرات سیستم
+-- ثبت تمام عملیات INSERT، UPDATE و DELETE روی جداول
+-- =============================================
+create table log.AuditLogs(
+    AuditLogID int primary key identity,
+    TableName nvarchar(50) not null,
+    RecordID int not null,
+    ActionType nvarchar(20) not null,
+    OldValue nvarchar(100),
+    NewValue nvarchar(100),
+    UserID int references usr.users(userid),
+    IPAddress nvarchar(15),
+    Description nvarchar(100),
+    ActionDate datetime default getdate()
+)
+go
+
+-- =============================================
+-- LoginLogs - لاگ ورود و خروج کاربران
+-- ثبت زمان ورود، خروج و آی‌پی کاربر
+-- =============================================
+create table log.LoginLogs(
+    LoginLogID int primary key identity,
+    UserID int references usr.users(userid),
+    LoginTime datetime default getdate() not null,
+    LogoutTime datetime ,
+    IPAddress nvarchar(15),
+    IsSuccessful bit default 1,
+    CreateDate datetime default getdate()
+)
+go
+
+-- =============================================
+-- StockLogs - لاگ تغییرات موجودی انبار
+-- ثبت هرگونه افزایش یا کاهش موجودی کالا
+-- =============================================
+create table log.StockLogs(
+    StockLogID int primary key identity,
+    ProductID int references inv.Products(ProductID),
+    WarehouseID int references inv.Warehouses(WarehouseID),
+    OldQuantity int not null,
+    NewQuantity int not null,
+    ChangeQuantity int not null,
+    Reason nvarchar(20) not null,
+    UserID int references usr.users(userid),
+    ChangeDate datetime default getdate()
+)
+go
+
+-- =============================================
+-- ErrorLog - لاگ خطاهای سیستمی
+-- ثبت خطاهای رخ داده در Stored Procedure ها و کوئری‌ها
+-- =============================================
+create table log.ErrorLog (
+    ErrorID int identity primary key,
+    ErrorMessage nvarchar(500) not null,
+    ErrorNumber int,
+    ErrorProcedure nvarchar(100),
+    ErrorLine int,
+    UserID int references usr.Users(UserID),
+    ErrorDate datetime default getdate()
+)
+go
+
+-- =============================================
+-- Notifications - اعلان‌های سیستم
+-- ارسال اعلان به کاربران برای اطلاع‌رسانی
+-- =============================================
+create table log.Notifications (
+    NotificationID int identity primary key,
+    UserID int null references usr.Users(UserID),
+    Title nvarchar(100) not null,
+    Description nvarchar(500),
+    NotificationType nvarchar(20) default 'Info',
+    IsRead bit default 0,
+    CreatedDate datetime default getdate()
+)
