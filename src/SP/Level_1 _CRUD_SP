@@ -1,0 +1,483 @@
+-- =============================================
+-- SP_Customer_Add - ثبت مشتری جدید
+-- اعتبارسنجی تکراری نبودن شماره تماس و کد ملی
+-- ثبت لاگ در CustomerLog
+-- =============================================
+create or alter proc [dbo].[SP_Customer_Add]
+@FirstName nvarchar(30),
+@LastName nvarchar(30),
+@PhoneNumber nvarchar(30),
+@NationalCode nvarchar(15),
+@CustomerTypeID int = 0,
+@Address nvarchar(100)
+as begin
+	set nocount on
+	begin try
+		begin tran
+			if exists (select 1 from sls.Customers where PhoneNumber = @PhoneNumber)
+			begin
+				select 'شماره تلفن وارد شده از قبل وجود دارد' as err
+				rollback
+				return
+			end
+			if exists (select 1 from sls.Customers where NationalCode = @NationalCode)
+			begin
+				select 'کد ملی وارد شده از قبل وجود دارد' as err
+				rollback
+				return
+			end
+			if not exists (select 1 from sls.CustomerTypes where CustomerTypeID = @CustomerTypeID)
+			begin
+				select 'نوع مشتری وارد شده معتبر نمی باشد' as err
+				rollback
+				return
+			end
+			insert into sls.Customers (FirstName,LastName,PhoneNumber,NationalCode,
+			CustomerTypeID,Address,registerDate)
+			values (@FirstName,@LastName,@PhoneNumber,@NationalCode,
+			@CustomerTypeID,@Address,GETDATE())
+
+			insert into sls.CustomerLog(CustomerID,FirstName,LastName,PhoneNumber,NationalCode,CustomerTypeID,Address,ActionType,CreateDate)
+			values(SCOPE_IDENTITY(),@FirstName,@LastName,@PhoneNumber,@NationalCode,@CustomerTypeID,@Address,'Insert',GETDATE())
+
+			select SCOPE_IDENTITY() as NewCustomerID , 'ثبت کاربر با موفقیت انجام شد' as status
+		commit
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
+GO
+
+-- =============================================
+-- SP_Product_Add - ثبت کالای جدید
+-- اعتبارسنجی تکراری نبودن کد کالا و معتبر بودن دسته/برند/واحد
+-- ثبت لاگ در ProductLog
+-- =============================================
+create or alter  proc [dbo].[SP_Product_Add]
+@ProductCode nvarchar(20),
+@ProductName nvarchar(50),
+@CategoryID int,
+@BrandID int,
+@UnitID int,
+@Barcode nvarchar(60),
+@Description nvarchar(100)
+as begin
+	set nocount on
+	begin try
+		begin tran
+			if exists (select 1 from inv.Products where ProductCode = @ProductCode)
+			begin
+				select 'کد محصول وارد شده از قبل وجود دارد' as err
+				rollback
+				return
+			end
+			if @CategoryID is not null and not exists (select 1 from inv.Categories where CategoryID = @CategoryID)
+			begin
+				select 'دسته بندی انتخاب شده معتبر نیست' as err
+				rollback
+				return
+			end
+			if @BrandID is not null and not exists (select 1 from inv.Brands where BrandID = @BrandID)
+			begin
+				select 'برند انتخاب شده معتبر نیست' as err
+				rollback
+				return
+			end
+			if @UnitID is not null and not exists (select 1 from inv.Units  where UnitID = @UnitID)
+			begin
+				select 'واحد انتخاب شده معتبر نیست' as err
+				rollback
+				return
+			end
+
+			insert into inv.Products (ProductCode,ProductName,CategoryID
+			,BrandID,UnitID,Barcode,Description,IsActive,CreateDate)
+			values(@ProductCode,@ProductName,@CategoryID,@BrandID,@UnitID
+			,@Barcode,@Description,default,getdate())
+
+			insert into inv.ProductLog(ProductID,ProductCode,ProductName,CategoryID,BrandID,UnitID,Barcode,Description,IsActive,ActionType,CreateDate)
+			values(SCOPE_IDENTITY(),@ProductCode,@ProductName,@CategoryID,@BrandID,@UnitID,@Barcode,@Description,default,'Insert',getdate())
+
+			select SCOPE_IDENTITY() as ProductID , 'محصول با موفقیت وارد شد' as status
+		commit
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
+
+GO
+
+-- =============================================
+-- SP_Product_Del - غیرفعال کردن کالا
+-- اعتبارسنجی وجود کالا و فعال بودن آن
+-- ثبت لاگ در ProductLog با ActionType = 'Delete'
+-- =============================================
+create or alter  proc [dbo].[SP_Product_Del]
+@ProductID int
+as begin
+	set nocount on
+	begin try
+		begin tran
+			if not exists (select 1 from inv.Products where ProductID = @ProductID)
+			begin
+				select 'شناسه وارد شده وجود ندارد' as err
+				rollback
+				return
+			end
+			if exists (select 1 from inv.Products where ProductID = @ProductID and IsActive = 0)
+			begin
+				select 'کالا از قبل حذف شده' as err
+				rollback
+				return
+			end
+			update inv.Products set IsActive = 0 where ProductID = @ProductID
+
+			declare @ProductCode nvarchar(20),@ProductName nvarchar(50),@CategoryID int,@BrandID int,@UnitID int,@Barcode nvarchar(50)
+
+			select @ProductCode = p.ProductCode,@ProductName = p.ProductName,@CategoryID = p.CategoryID,@BrandID =p.BrandID ,@UnitID = p.UnitID,@Barcode = p.Barcode
+			from inv.Products p where ProductID = @ProductID
+
+			insert into inv.ProductLog(ProductID,ProductCode,ProductName,CategoryID,BrandID,UnitID,Barcode,Description,IsActive,ActionType,CreateDate)
+			values(@ProductID,@ProductCode,@ProductName,@CategoryID,@BrandID,@UnitID,@Barcode,'حذف محصول',0,'Delete',getdate())
+			
+			select @ProductID as ProductID , 'محصول با موفقیت حذف شد' as status
+			
+		commit
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
+
+GO
+
+-- =============================================
+-- SP_Product_Upd - ویرایش کالا
+-- ثبت لاگ در ProductLog با ActionType = 'Update'
+-- =============================================
+create or alter  proc [dbo].[SP_Product_Upd]
+@ProductID int,
+@ProductName nvarchar(50),
+@CategoryID int,
+@BrandID int,
+@UnitID int,
+@Barcode nvarchar(60),
+@Description nvarchar(100),
+@IsActive bit
+as begin
+	set nocount on
+	begin try
+		begin tran
+			if not exists (select 1 from inv.Products where ProductID = @ProductID)
+			begin
+				select 'شناسه وارد شده وجود ندارد' as err
+				rollback
+				return
+			end
+
+			update inv.Products set ProductName = @ProductName ,CategoryID = @CategoryID 
+			,BrandID = @BrandID ,UnitID = @UnitID ,Barcode = @Barcode ,Description = @Description ,IsActive = @IsActive
+			where ProductID = @ProductID
+		
+			declare @ProductCode nvarchar(20) = (select ProductCode from inv.Products  where ProductID = @ProductID)
+			insert into inv.ProductLog(ProductID,ProductCode,ProductName,CategoryID,BrandID,UnitID,Barcode,Description,IsActive,ActionType,CreateDate)
+			values(@ProductID,@ProductCode,@ProductName,@CategoryID,@BrandID,@UnitID,@Barcode,@Description,default,'Update',getdate())
+
+			select @ProductID as ProductID , 'محصول با موفقیت تغییر پیدا کرد' as status
+			
+		commit
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
+
+GO
+
+-- =============================================
+-- sp_Supplier_Add - ثبت تأمین‌کننده جدید
+-- اعتبارسنجی کد تأمین‌کننده، شرکت و کشور
+-- ثبت همزمان در Suppliers، SupplierDetails و SupplierLog
+-- =============================================
+create or alter proc [dbo].[sp_Suppleir_Add]
+	@SupplierCode nvarchar(20),
+	@CompanyID int ,
+	@ContactPerson nvarchar(50),
+	@Phone nvarchar(30) ,
+	@Email nvarchar(30) ,
+	@Address nvarchar(150),
+	@CountryID int 
+as begin
+	set nocount on
+	begin try
+		begin tran
+			if exists (select 1 from prc.Suppliers where SupplierCode = @SupplierCode)
+			begin
+				select 'کد تامین کننده وارد شده از قبل وجود داره' as err
+				rollback
+				return
+			end
+			if not exists (select 1 from prc.Companies where CompanyID = @CompanyID)
+			begin
+				select 'شناسه کمپانی وارد شده معتبر نمی باشد' as err
+				rollback
+				return
+			end
+			if @CountryID is not null and not exists (select 1 from pub.Countries where CountryID = @CountryID)
+			begin
+				select 'شناسه کشور وارد شده معتبر نمی باشد' as err
+				rollback
+				return
+			end
+			insert into prc.Suppliers (SupplierCode,IsActive,CreateDate,CompanyID)
+			values(@SupplierCode,default,getdate(),@CompanyID)
+
+			declare @SupplierID int = scope_identity()
+			insert into prc.SupplierDetails(SupplierID,ContactPerson,Phone,Email,Address,CountryID)
+			values(@SupplierID,@ContactPerson,@Phone,@Email,@Address,@CountryID)
+
+			insert into prc.SupplierLog (SupplierID, SupplierCode, CompanyID, ContactPerson, Phone, Email, Address, CountryID, ActionType, CreateDate)
+			values (@SupplierID, @SupplierCode, @CompanyID, @ContactPerson, @Phone, @Email, @Address, @CountryID,'Insert', getdate())
+
+		commit								  
+	end try									  
+											  
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
+GO
+
+-- =============================================
+-- sp_UpdateStock - بروزرسانی موجودی انبار
+-- پشتیبانی از افزایش و کاهش موجودی
+-- اعتبارسنجی کالا، انبار و موجودی کافی
+-- ثبت لاگ در StockLogs
+-- =============================================
+create or alter proc [dbo].[sp_UpdateStock]
+@ProductID int,
+@WarehouseID int,
+@Quantity int
+as begin
+	set nocount on
+	begin try
+		begin tran
+			if not exists (select 1 from inv.stocks where ProductID = @ProductID)
+			begin
+				select 'محصول وارد شده وجود ندارد' as err
+				rollback
+				return
+			end
+			if not exists (select 1 from inv.stocks where WarehouseID = @WarehouseID)
+			begin
+				select 'انبار وارد شده معتبر نیست' as err
+				rollback
+				return
+			end
+			if @Quantity < 0
+			begin
+				declare @stock int = (select quantity from inv.Stocks where ProductID = @ProductID and WarehouseID = @WarehouseID)
+				if @Quantity > @stock
+					begin
+						select 'موجودی کافی نمیباشد' as err
+						rollback
+						return
+					end
+			end
+			update inv.Stocks set Quantity = Quantity + @Quantity
+			where ProductID = @ProductID and WarehouseID = @WarehouseID
+			declare @NewStock int = (select quantity from inv.Stocks where ProductID = @ProductID and WarehouseID = @WarehouseID)
+
+			insert into log.StockLogs(ProductID,WarehouseID,OldQuantity,NewQuantity,ChangeQuantity,Reason,UserID,ChangeDate)
+			values(@ProductID,@WarehouseID,@stock,@NewStock,(@NewStock-@stock),null,null,getdate())
+		commit
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
+GO
+
+-- =============================================
+-- sp_User_Add - ثبت کاربر جدید سیستم
+-- اعتبارسنجی تکراری نبودن EmployeeID، Username و Email
+-- ثبت لاگ در UserLog
+-- =============================================
+create or alter proc [dbo].[sp_User_Add]
+@EmployeeID int,
+@Username nvarchar(30),
+@Password nvarchar(150),
+@Email nvarchar(50)
+as begin
+	set nocount on
+	begin try
+		begin tran
+			if exists (select 1 from usr.Users where EmployeeID = @EmployeeID )
+			begin
+				select 'این کارمند قبلاً کاربر شده است' as err
+				rollback
+				return
+			end
+			if exists (select 1 from usr.Users where Username = @Username )
+			begin
+				select 'نام کاربری وارد شده از قبل وجود دارد' as err
+				rollback
+				return
+			end
+			if exists (select 1 from usr.Users where Email = @Email )
+			begin
+				select 'ایمیل وارد شده از قبل وجود دارد' as err
+				rollback
+				return
+			end
+
+			insert into usr.Users(EmployeeID,Username,Password,Email,LastLogin,IsActive,CreateDate)
+			values(@EmployeeID,@Username,@Password,@Email,null,default,getdate())
+
+			declare @UserID int = scope_identity()
+        
+			insert into usr.UserLog (UserID, EmployeeID, Username, Email, IsActive, ActionType, CreateDate)
+			values (@UserID, @EmployeeID, @Username, @Email, 1, 'INSERT', getdate())
+		commit
+			select @UserID as UserID, 'کاربر با موفقیت ثبت شد' as Status
+
+
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
+GO
+
+-- =============================================
+-- sp_Warehouse_Add - ثبت انبار جدید
+-- اعتبارسنجی تکراری نبودن کد انبار
+-- =============================================
+create or alter proc [dbo].[sp_Warehouse_Add]
+    @WarehouseName nvarchar(50),
+    @WarehouseCode nvarchar(10),
+    @Address nvarchar(200) = null,
+    @Phone nvarchar(15) = null
+as begin
+    set nocount on
+    begin try
+        begin tran
+        
+        if exists (select 1 from inv.Warehouses where WarehouseCode = @WarehouseCode)
+        begin
+            select 'کد انبار وارد شده از قبل وجود دارد' as ثrr
+            rollback
+            return
+        end
+        
+        insert into inv.Warehouses (WarehouseName, WarehouseCode, Address, Phone, IsActive, CreatedDate)
+        values (@WarehouseName, @WarehouseCode, @Address, @Phone, default, getdate())
+        
+        select SCOPE_IDENTITY() as WarehouseID, 'انبار با موفقیت ثبت شد' as Status
+        
+        commit
+    end try
+    begin catch
+        rollback
+        select ERROR_MESSAGE() as ErrorMessage
+    end catch
+end
+GO
+
+-- =============================================
+-- sp_Category_Add - ثبت دسته‌بندی جدید
+-- اعتبارسنجی تکراری نبودن نام دسته و معتبر بودن دسته والد
+-- ثبت لاگ در CategoryLog
+-- =============================================
+create or alter proc sp_Category_Add
+@CategoryName nvarchar(15),
+@ParentCategoryID int ,
+@Description nvarchar(100)
+as begin
+	set nocount on
+	begin try
+		begin tran
+			if exists (select 1 from inv.Categories where CategoryName = @CategoryName)
+			begin
+				select 'این دسته‌بندی قبلاً ثبت شده' as err
+				rollback
+				return
+			end
+			if @ParentCategoryID is not null and not exists (select 1 from inv.Categories where CategoryID = @ParentCategoryID)
+			begin
+				select 'دسته والد معتبر نیست' as err
+				rollback
+				return
+			end
+			insert into inv.Categories (CategoryName,ParentCategoryID,Description,IsActive)
+			values(@CategoryName,@ParentCategoryID,@Description,default)
+			declare @CategoryID int = scope_identity() 
+			insert into inv.CategoryLog(CategoryID,CategoryName,ParentCategoryID,Description,IsActive,ActionType,CreateDate)
+			values(@CategoryID,@CategoryName,@ParentCategoryID,@Description,1,'Insert',getdate())
+		commit	   
+	end try		   
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
+go
+
+-- =============================================
+-- SP_Brand_Add - ثبت برند جدید
+-- اعتبارسنجی تکراری نبودن نام برند و معتبر بودن کشور
+-- ثبت لاگ در BrandLog
+-- =============================================
+create or alter proc SP_Brand_Add
+@BrandName nvarchar(30),
+@CountryID int,
+@Website nvarchar(50),
+@Address nvarchar(150)
+as begin
+	set nocount on
+	begin try
+		begin tran
+			if exists (select 1 from inv.Brands where BrandName = @BrandName)
+			begin
+				select 'نام برند از قبل وجود داره' as err
+				rollback
+				return
+			end
+			if @CountryID is not null and not exists (select 1 from pub.Countries where CountryID = @CountryID )
+			begin
+				select 'شناسه کشور معتبر نیست' as err
+				rollback
+				return
+			end
+			insert into inv.Brands (BrandName,CountryID,Website,Address,IsActive)
+			values(@BrandName,@CountryID,@Website,@Address,default)
+
+			declare @BrandID int = scope_identity()
+			
+			insert into inv.BrandLog(BrandID,BrandName,CountryID,Website,Address,IsActive,ActionType,CreateDate)
+			values(@BrandID,@BrandName,@CountryID,@Website,@Address,1,'Insert',GETDATE())
+		commit
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
+go
