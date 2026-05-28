@@ -83,3 +83,17 @@ create table log.Notifications (
     IsRead bit default 0,
     CreatedDate datetime default getdate()
 )
+go
+
+-- =============================================
+-- DatabaseLog - لاگ یکپارچه رویدادهای DDL
+-- ثبت خودکار CREATE, ALTER, DROP روی جداول
+-- =============================================
+create table log.DatabaseLog (
+    LogID int identity primary key,
+    EventType nvarchar(50) not null,  
+    ObjectName nvarchar(100) not null,  
+    SQLCommand nvarchar(max) null,      
+    UserName nvarchar(50) null,         
+    EventDate datetime default getdate()
+);
