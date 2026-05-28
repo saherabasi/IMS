@@ -1,0 +1,45 @@
+-- =============================================
+-- trg_Audit_All_Tables - لاگ یکپارچه رویدادهای DDL
+-- ثبت خودکار CREATE, ALTER, DROP روی تمام جداول دیتابیس
+-- =============================================
+create trigger trg_Audit_All_Tables on database
+for ddl_table_events
+as begin
+	set nocount on
+	declare @Event xml = eventdata()
+	insert into log.databaseLog(EventType,ObjectName,SQLCommand,UserName,EventDate)
+	values(
+	@Event.value('(/EVENT_INSTANCE/eventtype)[1]','NVARCHAR(50)'),
+	@Event.value('(/EVENT_INSTANCE/objectName)[1]','NVARCHAR(100)'),
+	@Event.value('(/EVENT_INSTANCE/tsqlcommand)[1]','NVARCHAR(max)'),
+	@Event.value('(/EVENT_INSTANCE/username)[1]','NVARCHAR(50)'),
+	@Event.value('(/EVENT_INSTANCE/posttime)[1]','datetime')
+	) 
+end
+go
+
+-- =============================================
+-- trg_Cascade_Delete - جلوگیری از غیرفعال کردن محصولات در سفارشات باز
+-- چک می‌کند محصول در سفارشات Pending استفاده نشده باشد
+-- =============================================
+create trigger trg_Cascade_Delete on inv.products
+instead of update
+as begin
+	if update (isactive) and exists (select 1 from inserted where IsActive = 0) 
+	begin
+		if exists (select 1 from inserted i 
+		inner join 
+		sls.SalesOrderDetails sod on i.ProductID = sod.ProductID 
+		inner join 
+		sls.SalesOrders so on sod.SalesOrderID = so.SalesOrderID
+		where so.Status = 'Pending')
+		begin
+			select '' as err
+			rollback tran
+			return
+		end
+	end
+
+	update inv.Products set IsActive = i.isactive from inserted i inner join inv.Products p on i.ProductID = p.ProductID  
+end
+go
