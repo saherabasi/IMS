@@ -1,0 +1,178 @@
+-- =============================================
+-- trg_Product_Audit - لاگ خودکار تغییرات محصولات
+-- ثبت INSERT, UPDATE, DELETE در ProductLog
+-- =============================================
+create trigger trg_Product_Audit on inv.products 
+after insert,update,delete 
+as begin
+	set nocount on
+
+	if exists (select 1 from inserted) and not exists (select 1 from deleted)
+	begin
+		insert into inv.ProductLog(ProductID,ProductCode,ProductName,CategoryID,BrandID,UnitID,Barcode,
+		Description,IsActive,ActionType,CreateDate)
+		select ProductID,ProductCode,ProductName,CategoryID,BrandID,UnitID,Barcode,
+		Description,IsActive,'Insert',GETDATE() from inserted 
+	end
+
+	if not exists (select 1 from inserted) and exists (select 1 from deleted)
+	begin
+		insert into inv.ProductLog(ProductID,ProductCode,ProductName,CategoryID,BrandID,UnitID,Barcode,
+		Description,IsActive,ActionType,CreateDate)
+		select ProductID,ProductCode,ProductName,CategoryID,BrandID,UnitID,Barcode,
+		Description,IsActive,'Delete',GETDATE() from deleted 
+	end
+
+	if exists (select 1 from inserted) and exists (select 1 from deleted)
+	begin
+		insert into inv.ProductLog(ProductID,ProductCode,ProductName,CategoryID,BrandID,UnitID,Barcode,
+		Description,IsActive,ActionType,CreateDate)
+		select ProductID,ProductCode,ProductName,CategoryID,BrandID,UnitID,Barcode,
+		Description,IsActive,'Update',GETDATE() from inserted 
+	end
+end
+go
+
+-- =============================================
+-- trg_Customer_Audit - لاگ خودکار تغییرات مشتریان
+-- ثبت INSERT, UPDATE, DELETE در CustomerLog
+-- =============================================
+create trigger trg_Customer_Audit on sls.customers
+after insert,update,delete 
+as begin
+	set nocount on
+
+	if exists (select 1 from inserted) and not exists (select 1 from deleted)
+	begin
+		insert into sls.CustomerLog(CustomerID,FirstName,LastName,PhoneNumber,NationalCode,CustomerTypeID
+		,Address,ActionType,CreateDate)
+		select CustomerID,FirstName,LastName,PhoneNumber,NationalCode,CustomerTypeID
+		,Address,'Insert',GETDATE() from inserted
+	end
+	if not exists (select 1 from inserted) and exists (select 1 from deleted)
+	begin
+		insert into sls.CustomerLog(CustomerID,FirstName,LastName,PhoneNumber,NationalCode,CustomerTypeID
+		,Address,ActionType,CreateDate)
+		select CustomerID,FirstName,LastName,PhoneNumber,NationalCode,CustomerTypeID
+		,Address,'Delete',GETDATE() from deleted
+	end
+	if exists (select 1 from inserted) and exists (select 1 from deleted)
+	begin
+		insert into sls.CustomerLog(CustomerID,FirstName,LastName,PhoneNumber,NationalCode,CustomerTypeID
+		,Address,ActionType,CreateDate)
+		select CustomerID,FirstName,LastName,PhoneNumber,NationalCode,CustomerTypeID
+		,Address,'Update',GETDATE() from inserted
+	end
+end
+go
+
+-- =============================================
+-- trg_Supplier_Audit - لاگ خودکار تغییرات تأمین‌کنندگان
+-- ثبت INSERT, UPDATE, DELETE در SupplierLog
+-- =============================================
+create trigger trg_Supplier_Audit on prc.Suppliers
+after insert,update,delete 
+as begin
+	set nocount on
+
+	if exists (select 1 from inserted) and not exists (select 1 from deleted)
+	begin
+		insert into prc.SupplierLog(SupplierID,SupplierCode,CompanyID,ContactPerson,Phone,Email
+		,Address,CountryID,ActionType, CreateDate)
+		select SupplierID,SupplierCode,CompanyID,ContactPerson,Phone,Email
+		,Address,CountryID,'Insert', GETDATE() from inserted
+	end
+	if not exists (select 1 from inserted) and exists (select 1 from deleted)
+	begin
+		insert into prc.SupplierLog(SupplierID,SupplierCode,CompanyID,ContactPerson,Phone,Email
+		,Address,CountryID,ActionType, CreateDate)
+		select SupplierID,SupplierCode,CompanyID,ContactPerson,Phone,Email
+		,Address,CountryID,'Delete', GETDATE() from deleted
+	end
+	if exists (select 1 from inserted) and exists (select 1 from deleted)
+	begin
+		insert into prc.SupplierLog(SupplierID,SupplierCode,CompanyID,ContactPerson,Phone,Email
+		,Address,CountryID,ActionType, CreateDate)
+		select SupplierID,SupplierCode,CompanyID,ContactPerson,Phone,Email
+		,Address,CountryID,'Update', GETDATE() from inserted
+	end
+end
+go
+
+-- =============================================
+-- trg_Category_Audit - لاگ خودکار تغییرات دسته‌بندی‌ها
+-- ثبت INSERT, UPDATE, DELETE در CategoryLog
+-- =============================================
+create trigger trg_Category_Audit on inv.categories
+after insert,update,delete
+as begin
+	if exists (select 1 from inserted) and not exists (select 1 from deleted)
+	begin
+		insert into inv.CategoryLog (CategoryID,CategoryName,ParentCategoryID,Description,IsActive,ActionType,CreateDate)
+		select CategoryID,CategoryName,ParentCategoryID,Description,IsActive,'Insert',GETDATE() from inserted
+	end
+	if not exists (select 1 from inserted) and exists (select 1 from deleted)
+	begin
+		insert into inv.CategoryLog (CategoryID,CategoryName,ParentCategoryID,Description,IsActive,ActionType,CreateDate)
+		select CategoryID,CategoryName,ParentCategoryID,Description,IsActive,'Delete',GETDATE() from deleted
+	end
+	if exists (select 1 from inserted) and exists (select 1 from deleted)
+	begin
+		insert into inv.CategoryLog (CategoryID,CategoryName,ParentCategoryID,Description,IsActive,ActionType,CreateDate)
+		select CategoryID,CategoryName,ParentCategoryID,Description,IsActive,'Update',GETDATE() from inserted
+	end
+end
+go
+
+-- =============================================
+-- trg_Brand_Audit - لاگ خودکار تغییرات برندها
+-- ثبت INSERT, UPDATE, DELETE در BrandLog
+-- =============================================
+create trigger trg_Brand_Audit on inv.brands
+after insert,update,delete
+as begin
+	if exists (select 1 from inserted) and not exists (select 1 from deleted)
+	begin
+		insert into inv.BrandLog(BrandID,BrandName,CountryID,Website,Address,IsActive,ActionType,CreateDate)
+		select BrandID,BrandName,CountryID,Website,Address,IsActive,'Insert',GETDATE() from inserted
+	end
+	if not exists (select 1 from inserted) and exists (select 1 from deleted)
+	begin
+		insert into inv.BrandLog(BrandID,BrandName,CountryID,Website,Address,IsActive,ActionType,CreateDate)
+		select BrandID,BrandName,CountryID,Website,Address,IsActive,'Delete',GETDATE() from deleted
+	end
+	if exists (select 1 from inserted) and exists (select 1 from deleted)
+	begin
+		insert into inv.BrandLog(BrandID,BrandName,CountryID,Website,Address,IsActive,ActionType,CreateDate)
+		select BrandID,BrandName,CountryID,Website,Address,IsActive,'Update',GETDATE() from inserted
+	end
+end
+go
+
+-- =============================================
+-- trg_User_Audit - لاگ خودکار تغییرات کاربران
+-- ثبت INSERT, UPDATE, DELETE در UserLog
+-- =============================================
+create trigger trg_User_Audit on usr.users
+after insert,update,delete
+as begin
+	if exists (select 1 from inserted) and not exists (select 1 from deleted)
+	begin
+		insert into usr.UserLog(UserID,EmployeeID,Username,Email,IsActive,ActionType,CreateDate)
+		select UserID,EmployeeID,Username,Email,IsActive,'Insert',GETDATE() from inserted
+	end
+
+	if not exists (select 1 from inserted) and exists (select 1 from deleted)
+	begin
+		insert into usr.UserLog(UserID,EmployeeID,Username,Email,IsActive,ActionType,CreateDate)
+		select UserID,EmployeeID,Username,Email,IsActive,'Delete',GETDATE() from deleted
+	end
+
+	if exists (select 1 from inserted) and exists (select 1 from deleted)
+	begin
+		insert into usr.UserLog(UserID,EmployeeID,Username,Email,IsActive,ActionType,CreateDate)
+		select UserID,EmployeeID,Username,Email,IsActive,'Update',GETDATE() from inserted
+	end
+
+end
+go
