@@ -1,0 +1,61 @@
+-- =============================================
+-- trg_Prevent_Duplicate_ProductCode - جلوگیری از ثبت کد محصول تکراری
+-- =============================================
+create trigger trg_Prevent_deplicate_ProductCode on inv.Products
+after insert 
+as begin
+	set nocount on
+	if exists (select 1 from inserted i inner join inv.Products p on i.ProductCode = p.ProductCode and i.ProductID != p.ProductID)
+	begin
+		select 'کد محصول تکراری است' as err
+		rollback tran
+	end
+end
+go
+
+-- =============================================
+-- trg_Prevent_Duplicate_NationalCode - جلوگیری از ثبت کد ملی تکراری
+-- =============================================
+create trigger trg_Prevent_Duplicate_NationalCode on sls.customers
+after insert
+as begin
+	set nocount on
+	if exists (select 1 from inserted i inner join sls.Customers c on i.NationalCode = c.NationalCode and i.CustomerID != c.CustomerID)
+	begin
+		select 'کد ملی تکراری است' as err
+		rollback tran
+	end
+end
+go
+
+
+-- =============================================
+-- trg_Prevent_Duplicate_SupplierCode - جلوگیری از ثبت کد تأمین‌کننده تکراری
+-- =============================================
+create trigger trg_Prevent_Duplicate_SupplierCode on prc.suppliers
+after insert
+as begin
+	set nocount on
+	if exists (select 1 from inserted i inner join prc.suppliers s on i.SupplierCode = s.SupplierCode and i.SupplierID != s.SupplierID)
+	begin
+		select 'کد تامین کننده تکراری است' as err
+		rollback tran
+	end
+end
+go
+
+
+-- =============================================
+-- trg_Prevent_Duplicate_Username - جلوگیری از ثبت نام کاربری تکراری
+-- =============================================
+create trigger trg_Prevent_Duplicate_Username on usr.users
+after insert
+as begin
+	set nocount on
+	if exists (select 1 from inserted i inner join usr.users u on i.Username = u.Username and i.UserID != u.UserID)
+	begin
+		select 'نام کاربری تکراری است' as err
+		rollback tran
+	end
+end
+go
