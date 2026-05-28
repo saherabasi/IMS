@@ -1,0 +1,89 @@
+-- =============================================
+-- trg_Stock_PreventNegative - جلوگیری از منفی شدن موجودی
+-- در صورت منفی شدن Quantity، کل تراکنش Rollback می‌شود
+-- =============================================
+create trigger trg_Stock_PreventNegative on inv.Stocks
+after update
+as begin
+    set nocount on
+    
+    if exists (select 1 from inserted where Quantity < 0)
+    begin
+        rollback tran
+        raiserror(N'موجودی نمی‌تواند منفی شود!', 16, 1)
+    end
+end
+go
+
+-- =============================================
+-- trg_Stock_Audit - لاگ تغییرات موجودی انبار
+-- ثبت ورود اولیه، حذف و بروزرسانی موجودی
+-- محاسبه خودکار OldQuantity, NewQuantity, ChangeQuantity
+-- =============================================
+create trigger trg_Stock_Audit on inv.stocks
+after insert,update,delete
+as begin
+	set nocount on
+
+	if exists (select 1 from inserted) and not exists (select 1 from deleted)
+	begin
+		insert into log.stockLogs(ProductID,WarehouseID,OldQuantity,NewQuantity,ChangeQuantity,Reason,UserID,ChangeDate)
+		select ProductID,WarehouseID,0,Quantity,Quantity,'ورود اولیه کالا',null,GETDATE() from inserted
+	end
+
+	if not exists (select 1 from inserted) and exists (select 1 from deleted)
+	begin
+		insert into log.stockLogs(ProductID,WarehouseID,OldQuantity,NewQuantity,ChangeQuantity,Reason,UserID,ChangeDate)
+		select ProductID,WarehouseID,Quantity,0,-Quantity,'حذف کالا',null,GETDATE() from deleted
+	end
+
+	if exists (select 1 from inserted) and exists (select 1 from deleted)
+	begin
+		insert into log.stockLogs(ProductID,WarehouseID,OldQuantity,NewQuantity,ChangeQuantity,Reason,UserID,ChangeDate)
+		select i.ProductID,i.WarehouseID,d.Quantity,i.Quantity,i.Quantity - d.Quantity,'بروزرسانی موجودی',null,getdate()
+		from inserted i
+		inner join deleted d on i.ProductID = d.ProductID and i.WarehouseID = d.WarehouseID
+		where i.Quantity != d.Quantity
+	end
+
+end
+go
+
+-- =============================================
+-- trg_GoodsReceipt_UpdateStock - آپدیت خودکار موجودی بعد از رسید کالا
+-- پس از ثبت رسید، Quantity کالا در انبار مقصد افزایش می‌یابد
+-- =============================================
+create trigger trg_GoodsReceipt_UpdateStock on prc.goodsReceipts
+after insert
+as begin
+	update s set s.Quantity += i.Quantity 
+	from inserted i 
+	inner join 
+	inv.Stocks s on i.ProductID = s.ProductID
+	and
+	i.WarehouseID = s.WarehouseID
+end
+go
+
+--============================================
+-- trg_SalesOrder_UpdateStock - آپدیت خودکار موجودی بعد از فروش
+-- پس از ثبت جزئیات فاکتور، Quantity کالا از انبار مبدا کاهش می‌یابد
+-- =============================================
+create trigger trg_SalesOrder_UpdateStock on sls.InvoiceDetails
+after insert
+as begin
+	update inv.Stocks set Quantity -= i.Quantity 
+	from inserted i 
+	inner join 
+	inv.Stocks s on i.ProductID = s.ProductID
+	inner join 
+	sls.Invoices iv on i.InvoiceID = iv.InvoiceID
+	inner join 
+	sls.SalesOrders so on iv.SalesOrderID = so.SalesOrderID
+	where
+	i.ProductID = s.ProductID
+	and
+	so.SrcWarehouseID = s.WarehouseID
+	
+end
+go
