@@ -1,0 +1,132 @@
+-- =============================================
+-- Schema: inv (Inventory - ویوهای موجودی و انبار)
+-- =============================================
+
+-- =============================================
+-- Vw_ProductFullDetail - اطلاعات کامل محصول
+-- شامل: موجودی کل + آخرین قیمت خرید
+-- =============================================
+create view inv.Vw_ProductFullDetail as select 
+p.ProductID,
+p.ProductCode,
+p.ProductName,
+p.CategoryID,
+p.BrandID,
+p.UnitID,
+p.Barcode,
+p.IsActive,
+sum(s.Quantity) as FinalQuantity,
+ca.UnitPrice
+from inv.Products p 
+inner join
+inv.Stocks s on p.ProductID = s.ProductID
+cross apply
+(select top 1 pod.UnitPrice
+from
+prc.PurchaseOrderDetails pod
+inner join 
+prc.PurchaseOrders po on pod.PurchaseOrderID = po.PurchaseOrderID
+where pod.ProductID = p.ProductID
+order by po.OrderDate desc
+)ca
+group by p.ProductID,p.ProductCode,p.ProductName,p.CategoryID,p.BrandID,p.UnitID,p.Barcode,p.IsActive,ca.UnitPrice
+go
+
+-- =============================================
+-- Vw_StockValueByWarehouse - ارزش ریالی موجودی هر انبار
+-- فرمول: جمع (موجودی × آخرین قیمت خرید)
+-- =============================================
+create view inv.Vw_StockValueByWarehouse as select
+w.WarehouseID,
+w.WarehouseCode,
+w.WarehouseName,
+sum(ca.UnitPrice * s.Quantity) as TotalValue
+from inv.Stocks s 
+inner join
+inv.Warehouses w on s.WarehouseID = w.WarehouseID
+inner join
+inv.Products p on s.ProductID = p.ProductID
+cross apply (
+select top 1 
+pod.UnitPrice
+from prc.PurchaseOrderDetails pod
+inner join 
+prc.PurchaseOrders po on pod.PurchaseOrderID = po.PurchaseOrderID
+where pod.ProductID = p.ProductID
+order by po.OrderDate desc
+) ca
+group by w.WarehouseID,w.WarehouseCode,w.WarehouseName
+go
+
+-- =============================================
+-- vw_InventoryAging - عمر موجودی کالاها
+-- محاسبه چند روز از آخرین خرید گذشته
+-- =============================================
+create or alter view inv.vw_InventoryAging as select
+p.ProductID,
+p.ProductCode,
+p.ProductName,
+s.Quantity as TotalStock,
+DATEDIFF(day,ca.OrderDate,GETDATE()) as DaysSinceLastPurchase
+from inv.Products p
+inner join inv.Stocks s on p.ProductID = s.ProductID
+cross apply(
+select top 1 
+po.OrderDate 
+from prc.PurchaseOrderDetails pod
+inner join
+prc.PurchaseOrders po on pod.PurchaseOrderID = po.PurchaseOrderID
+where pod.ProductID = p.ProductID
+order by po.OrderDate desc
+) ca
+go
+
+-- =============================================
+-- vw_ProductProfitability - سودآوری هر محصول
+-- فرمول: آخرین قیمت فروش - آخرین قیمت خرید
+-- =============================================
+create view inv.vw_ProductProfitability as select 
+p.ProductID,
+p.ProductCode,
+p.ProductName,
+ca.UnitPrice as purchasePrice,
+ca2.UnitPrice as SalesPrice,
+ca2.UnitPrice - ca.UnitPrice as Profit 
+from inv.Products P
+cross apply(
+select top 1 
+pod.UnitPrice 
+from prc.PurchaseOrderDetails pod
+inner join
+prc.PurchaseOrders po on pod.PurchaseOrderID = po.PurchaseOrderID
+where pod.ProductID = p.ProductID
+order by po.OrderDate desc
+) ca
+cross apply(
+select top 1 
+sod.UnitPrice 
+from sls.SalesOrderDetails sod
+inner join
+sls.SalesOrders so on sod.SalesOrderID = so.SalesOrderID
+where sod.ProductID = p.ProductID
+order by so.OrderDate desc
+) ca2
+go
+
+-- =============================================
+-- vw_StockMovementSummary - خلاصه گردش موجودی
+-- ورود (InQuantity) + خروج (OutQuantity) + موجودی فعلی
+-- =============================================
+create view inv.vw_StockMovementSummary as select 
+p.ProductID,
+p.ProductCode,
+p.ProductName,
+sum(case when sl.ChangeQuantity < 0 then abs(sl.ChangeQuantity) else 0 end )OutQuantity,
+sum(case when sl.ChangeQuantity > 0 then sl.ChangeQuantity else 0 end )InQuantity,
+s.Quantity as CurrentQuantity
+from inv.Products P
+inner join 
+log.StockLogs sl on p.ProductID = sl.ProductID
+inner join
+inv.Stocks s on p.ProductID = s.ProductID
+group by p.ProductID,p.ProductCode,p.ProductName,s.Quantity
