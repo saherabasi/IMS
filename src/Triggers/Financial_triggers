@@ -1,0 +1,65 @@
+-- =============================================
+-- trg_Invoice_AutoCalcFinal - محاسبه خودکار مبلغ نهایی فاکتور
+-- پس از تغییر جزئیات فاکتور، FinalAmount مجدداً محاسبه می‌شود
+-- =============================================
+create or alter trigger trg_Invoice_AutoCalcFinal on sls.invoiceDetails
+after update
+as begin
+	set nocount on
+	update sls.Invoices set FinalAmount = 
+	fnc.fn_CalcDiscount((select sum(id.TotalPrice) from sls.InvoiceDetails id where id.InvoiceID = iv.invoiceID),iv.DiscountPercent)
+	from sls.invoices iv
+	where iv.InvoiceID in (select distinct InvoiceID from inserted)
+end
+go
+
+-- =============================================
+-- trg_Invoice_UpdateStatus - آپدیت خودکار وضعیت فاکتور پس از پرداخت
+-- پس از ثبت پرداخت، وضعیت فاکتور به Paid تغییر می‌کند
+-- =============================================
+create or alter trigger trg_Invoice_UpdadeStatus on sls.Payments
+after insert
+as begin
+	set nocount on
+	update sls.Invoices set Status = 'Paid'
+	from sls.Invoices s
+	where s.InvoiceID in (select distinct i.InvoiceID from inserted i)
+end
+go
+
+-- =============================================
+-- trg_Transaction_UpdateAccount - آپدیت خودکار موجودی حساب مالی
+-- واریز: افزایش موجودی | برداشت: کاهش موجودی
+-- =============================================
+create trigger trg_Transaction_UpdateAccount on fnc.Transactions
+after insert
+as begin
+
+	set nocount on
+	update a set Balance += i.Amount
+	from fnc.Accounts a
+	inner join inserted i on a.AccountID = i.AccountID
+	inner join fnc.TransactionTypes tt on i.TransactinTypeID = tt.TransactionTypeID
+	where tt.TransactionType = 'Deposit'
+
+	update a set Balance -= i.Amount
+	from fnc.Accounts a
+	inner join inserted i on a.AccountID = i.AccountID
+	inner join fnc.TransactionTypes tt on i.TransactinTypeID = tt.TransactionTypeID
+	where tt.TransactionType = 'Withdraw'
+end
+go
+
+-- =============================================
+-- trg_PurchaseOrder_AutoCalcTotal - محاسبه خودکار مبلغ کل سفارش خرید
+-- پس از تغییر جزئیات سفارش، TotalAmount مجدداً محاسبه می‌شود
+-- =============================================
+create trigger trg_PurchaseOrder_AutoCalcTotal on prc.PurchaseOrderDetails
+after update
+as begin
+	set nocount on
+	update prc.PurchaseOrders set TotalAmount = 
+	(select SUM(TotalPrice) from prc.PurchaseOrderDetails pod where pod.PurchaseOrderID = po.PurchaseOrderID)
+	from prc.PurchaseOrders po 
+	where po.PurchaseOrderID in (select distinct PurchaseOrderID from inserted)
+end
