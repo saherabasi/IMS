@@ -1,0 +1,299 @@
+-- =============================================
+-- SP_CompleteOrderCycle - چرخه کامل سفارش تا پرداخت
+-- ثبت همزمان سفارش فروش، فاکتور و پرداخت در یک تراکنش
+-- =============================================
+create proc sls.SP_CompleteOrderCycle
+@CustomerID INT,
+@WarehouseID INT,
+@ProductID INT,
+@Quantity INT,
+@UnitPrice DECIMAL(18,2),
+@DiscountPercent DECIMAL(5,2) = 0,
+@PaymentMethod NVARCHAR(20) = 'نقدی'
+as begin
+	set nocount on
+	begin try
+		begin tran
+			declare @SalesOrderCode nvarchar(20) = N'SO-' + cast(format(getdate(), 'yyyyMMddHHmmss') as nvarchar)
+			declare @InvoiceCode nvarchar(20) = N'INV-' + cast(format(getdate(), 'yyyyMMddHHmmss') as nvarchar)
+			declare @SalesOrderID int
+
+			exec sp_SalesOrders_Create 
+			@SalesOrderCode = @SalesOrderCode ,
+			@CustomerID = @CustomerID ,
+			@SrcWarehouseID = @WarehouseID ,
+			@ProductID = @ProductID ,
+			@Quantity = @Quantity ,
+			@UnitPrice =  @UnitPrice,
+			@SalesOrderID = @SalesOrderID output
+
+			declare @FinalAmount decimal(18,2) = fnc.fn_CalcDiscount (
+			(select sum(TotalPrice) from sls.SalesOrderDetails where SalesOrderID = @SalesOrderID),@DiscountPercent)
+
+			declare @InvoiceID int
+
+			exec SP_Invoice_Create 
+			@InvoiceCode = @InvoiceCode ,
+			@SalesOrderID = @SalesOrderID ,
+			@CustomerID = @CustomerID ,
+			@DiscountPercent = @DiscountPercent ,
+			@InvoiceID = @InvoiceID output
+
+
+
+			exec SP_ProccessPayment 
+			@InvoiceID = @InvoiceID ,
+			@CustomerID = @CustomerID ,
+			@Amount = @FinalAmount,
+			@PaymentMethod = @PaymentMethod
+		commit						   
+	end try							   
+									   
+	begin catch						   
+		rollback					   
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
+go
+
+-- =============================================
+-- sp_BulkUpdatePrices - آپدیت گروهی قیمت‌ها (افزایش/کاهش)
+-- @PercentChange مثبت = افزایش، منفی = کاهش (تخفیف)
+-- =============================================
+create or alter proc inv.sp_BulkUpdatePrices
+@CategoryId int,
+@PercentChange decimal(5,2),
+@Operator nvarchar 
+as begin
+	set nocount on
+	begin try
+		begin tran
+			if not exists (select 1 from inv.Categories where CategoryID = @CategoryId)
+			begin
+				select 'همچین دسته بندی نداریم مشتی' as err
+				rollback
+				return
+			end
+			if @Operator != '-' and @Operator != '+'
+			begin
+				select 'یا مثبت بده یا منفی ' as err
+				rollback
+				return
+			end
+			update prc.PurchaseOrderDetails set UnitPrice = unitprice + (UnitPrice / 100 ) * cast(concat(@Operator,@PercentChange) as decimal(5,2))
+			where ProductID in (select productID from inv.products where CategoryID = @CategoryId)
+		commit
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
+go
+
+-- =============================================
+-- sp_GenerateMonthlyReport - گزارش کامل ماهانه
+-- شامل: کل خرید، کل فروش، سود خالص، تعداد سفارشات
+-- =============================================
+create or alter proc fnc.sp_GenerateMonthlyReport
+@Year int,
+@Month int
+as begin
+	set nocount on
+	begin try
+		begin tran
+			select 
+			@Year as Year,
+			@Month as Month,
+			fnc.fn_GetTotalPurchase(@Year,@Month) as TotalPurchase,
+			fnc.fn_GetTotalSales(@Year,@Month) as TotalSales,
+			fnc.fn_GetMonthlyProfit(@Year,@Month) as MonthlyProfit,
+			fnc.GetCountSalesOrder(@Year,@Month) as CountSalesOrder
+		commit
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
+go
+
+-- =============================================
+-- SP_CalcEmployeeSalary - محاسبه حقوق کارمند
+-- فرمول: حقوق پایه + پورسانت فروش - مالیات
+-- =============================================
+create proc pub.SP_CalcEmployeeSalary
+@EmployeeID int,
+@Year int,
+@Month int
+as begin
+	set nocount on
+	begin try
+		begin tran
+			declare @Salary decimal(18,2) = (select salary from pub.Employees where EmployeeID = @EmployeeID)
+			declare @CommissionRateEmp decimal(18,2) = (select CommissionRate from pub.Employees where EmployeeID = @EmployeeID)
+			declare @MonthlySales decimal(18,2) = fnc.fn_GetMontlySales(@year,@month)
+			declare @TaxRate decimal(5,2) = (select TaxRate from fnc.Taxes where TaxName = 'مالیات بر حقوق')
+
+			declare @salaryWithCommission decimal(18,2) = @salary + ((@MonthlySales / 100) * @CommissionRateEmp)
+			declare @FinalAmount decimal(18,2) = @salaryWithCommission - (fnc.fn_calctax(@salaryWithCommission,@TaxRate))
+
+			select @FinalAmount as finalamount
+
+		commit
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
+go
+
+-- =============================================
+-- SP_AuditStock - انبارگردانی + ثبت مغایرت
+-- مقایسه موجودی سیستم با موجودی واقعی و ثبت اختلاف
+-- =============================================	
+create or alter proc SP_AuditStock
+@WarehouseID int,
+@ProductID int,
+@Actualquantity int
+as begin
+	set nocount on
+	begin try
+		begin tran
+			if not exists (select 1 from inv.Warehouses where WarehouseID = @WarehouseID)
+			begin 
+				select 'شناسه انبار وارد شده نامعتبر است' as err
+				rollback
+				return
+			end
+			if not exists (select 1 from inv.Products where ProductID = @ProductID)
+			begin 
+				select 'همچین محصولی در انبار وجود ندارد' as err
+				rollback
+				return
+			end
+			declare @Stock int = (select Quantity from inv.Stocks  where WarehouseID = @WarehouseID and ProductID = @ProductID)
+			declare @ChangeQuantity int = @stock - @Actualquantity
+			if @ChangeQuantity != 0 
+			begin
+				update inv.Stocks set Quantity = @Actualquantity where WarehouseID = @WarehouseID and ProductID = @ProductID
+				insert into log.StockLogs(ProductID,WarehouseID,OldQuantity,NewQuantity,ChangeQuantity,Reason,UserID,ChangeDate)
+				values(@ProductID,@WarehouseID,@Stock,@Actualquantity,@ChangeQuantity,'ثبت مغایرت',null,GETDATE())
+			end
+		commit
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
+go
+
+-- =============================================
+-- SP_ReturnToSupplier - مرجوعی کالا به تأمین‌کننده
+-- کاهش موجودی انبار و ثبت لاگ
+-- =============================================
+create proc prc.SP_ReturnToSupplier
+@PurchaseOrderID int,
+@ProductID int,
+@Quantity int,
+@WarehouseID int
+as begin
+	set nocount on
+	begin try
+		begin tran
+			if not exists (select 1 from prc.PurchaseOrders where PurchaseOrderID = @PurchaseOrderID)
+			begin
+				select 'شناسه سفارش خرید نامعتبر است' as err
+				rollback
+				return
+			end
+			if not exists (select 1 from inv.Products where ProductID = @ProductID)
+			begin 
+				select 'همچین محصولی در انبار وجود ندارد' as err
+				rollback
+				return
+			end
+			if not exists (select 1 from inv.Warehouses where WarehouseID = @WarehouseID)
+			begin 
+				select 'شناسه انبار وارد شده نامعتبر است' as err
+				rollback
+				return
+			end
+			declare @Stock int = (select Quantity from inv.Stocks  where WarehouseID = @WarehouseID and ProductID = @ProductID)
+			if @Quantity > @Stock 
+			begin 
+				select 'موجودی کمتر از مقدار وارد شده است' as err
+				rollback
+				return
+			end
+			update inv.Stocks set Quantity -= @Quantity where WarehouseID = @WarehouseID and ProductID = @ProductID
+
+			insert into log.StockLogs(ProductID,WarehouseID,OldQuantity,NewQuantity,ChangeQuantity,Reason,UserID,ChangeDate)
+			values(@ProductID,@WarehouseID,@Stock,(@Stock - @Quantity),@Quantity,'مرجوعی به تامین کننده',null,GETDATE())
+		commit
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
+go
+
+-- =============================================
+-- sp_MergeProducts - ادغام دو کالای مشابه
+-- انتقال موجودی، آپدیت جداول وابسته، غیرفعال کردن کالای منبع
+-- =============================================
+create proc inv.sp_MergeProducts
+@SrcProductID int,
+@TargetProductID int
+as begin
+	set nocount on
+	begin try
+		begin tran
+			if not exists (select 1 from inv.Products where ProductID = @SrcProductID)
+			begin 
+				select 'شناسه محصول مبدا نامعتبره' as err
+				rollback
+				return
+			end
+			if not exists (select 1 from inv.Products where ProductID = @TargetProductID)
+			begin 
+				select 'شناسه محصول هدف نامعتبره' as err
+				rollback
+				return
+			end
+			declare @SrcCategoryID int = (select CategoryID from inv.Products where ProductID = @SrcProductID)
+			declare @TargetCategoryID int = (select CategoryID from inv.Products where ProductID = @TargetProductID)
+
+			if @SrcCategoryID != @TargetCategoryID
+			begin 
+				select 'نوع دسته بندی محصولات وارد باید یکی باشد' as err
+				rollback
+				return
+			end
+			update inv.Stocks set Quantity += (select sum(Quantity) from inv.Stocks where ProductID = @SrcProductID) 
+			where ProductID = @TargetProductID
+
+			update inv.Stocks set Quantity = 0 where ProductID = @SrcProductID
+			update inv.Products set IsActive = 0 where ProductID = @SrcProductID
+
+			update sls.InvoiceDetails set ProductID = @TargetProductID where ProductID = @SrcProductID
+			update sls.SalesOrderDetails set ProductID = @TargetProductID where ProductID = @SrcProductID
+			update prc.PurchaseOrderDetails set ProductID = @TargetProductID where ProductID = @SrcProductID
+
+
+		commit
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
