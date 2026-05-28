@@ -1,0 +1,530 @@
+-- =============================================
+-- SP_PurchaseOrders_Create - ثبت سفارش خرید + جزئیات
+-- اعتبارسنجی کد سفارش، تأمین‌کننده، انبار و محصول
+-- ثبت همزمان سربرگ و جزئیات + آپدیت TotalAmount
+-- =============================================
+create proc sp_PurchaseOrders_Create
+@PurchaseOrderCode nvarchar(20),
+@SupplierID int,
+@DestWarehouseID int,
+@ProductID int,
+@Quantity int,
+@UnitPrice decimal(18,2)
+as begin
+	set nocount on
+	begin try
+		begin tran
+			if exists (select 1 from prc.PurchaseOrders po where po.PurchaseOrderCode = @PurchaseOrderCode)
+			begin
+				select 'کد سفارش از قبل وجود دارد' as err
+				rollback
+				return
+			end
+			if not exists (select 1 from prc.Suppliers where SupplierID = @SupplierID)
+			begin
+				select 'شناسه تامین کننده نامعتبر است' as err
+				rollback
+				return
+			end
+			if not exists (select 1 from inv.Warehouses where WarehouseID = @DestWarehouseID)
+			begin
+				select 'انبار مقصد نامعتبر است' as err
+				rollback
+				return
+			end
+			if not exists (select 1 from inv.Products where ProductID = @ProductID)
+			begin
+				select 'شناسه محصول نامعتبر است' as err
+				rollback
+				return
+			end
+			insert into prc.PurchaseOrders (PurchaseOrderCode,SupplierID,DestWarehouseID,OrderDate,Status,TotalAmount)
+			values(@PurchaseOrderCode,@SupplierID,@DestWarehouseID,GETDATE(),'Pending',null)
+			declare @PurchaseOrderID int = scope_identity()
+			insert into prc.PurchaseOrderDetails (PurchaseOrderID,ProductID,Quantity,UnitPrice)
+			values(@PurchaseOrderID,@ProductID,@Quantity,@UnitPrice)
+
+			update prc.PurchaseOrders set TotalAmount = (
+			select sum(pod.TotalPrice) from prc.PurchaseOrderDetails pod 
+			where pod.PurchaseOrderID = @PurchaseOrderID) where PurchaseOrderID = @PurchaseOrderID
+				   
+		commit	   
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
+go
+-- =============================================
+-- SP_SalesOrders_Create - ثبت سفارش فروش + جزئیات
+-- اعتبارسنجی کد سفارش، مشتری، انبار، محصول و موجودی کافی
+-- ثبت همزمان سربرگ و جزئیات + آپدیت TotalAmount + کسر از موجودی
+-- =============================================
+create or alter proc sp_SalesOrders_Create
+@SalesOrderCode nvarchar(20),
+@CustomerID int,
+@SrcWarehouseID int,
+@ProductID int,
+@Quantity int,
+@UnitPrice decimal(18,2),
+@SalesOrderID int output
+as begin
+	set nocount on
+	begin try
+		begin tran
+			if exists (select 1 from sls.SalesOrders where SalesOrderCode = @SalesOrderCode)
+			begin
+				select 'کد فروش از قبل وجود دارد' as err
+				rollback
+				return
+			end
+			if not exists (select 1 from sls.Customers where CustomerID = @CustomerID)
+			begin
+				select 'شناسه خریدار نامعتبر است' as err
+				rollback
+				return
+			end
+			if not exists (select 1 from inv.Warehouses where WarehouseID = @SrcWarehouseID)
+			begin
+				select 'انبار مقصد نامعتبر است' as err
+				rollback
+				return
+			end
+			if not exists (select 1 from inv.Products where ProductID = @ProductID)
+			begin
+				select 'شناسه محصول نامعتبر است' as err
+				rollback
+				return
+			end
+
+			declare @Stock int = (select Quantity from inv.Stocks where ProductID = @ProductID and WarehouseID = @SrcWarehouseID)
+			if @Quantity > @Stock 
+			begin
+				select 'موجودی کافی نمی باشد' as err
+				rollback
+				return
+			end
+			if @Quantity <= 0 
+			begin
+				select 'خرید باید بیشتر از 0 باشد ' as err
+				rollback
+				return
+			end
+
+			insert into sls.SalesOrders (SalesOrderCode,CustomerID,SrcWarehouseID,OrderDate,Status,TotalAmount)
+			values(@SalesOrderCode,@CustomerID,@SrcWarehouseID,GETDATE(),'Pending',null)
+
+			set @SalesOrderID = scope_identity()
+
+			insert into sls.SalesOrderDetails(SalesOrderID,ProductID,Quantity,UnitPrice)
+			values(@SalesOrderID,@ProductID,@Quantity,@UnitPrice)
+
+			update sls.SalesOrders set TotalAmount = (
+			select sum(so.TotalPrice) from sls.SalesOrderDetails so 
+			where so.SalesOrderID = @SalesOrderID) where SalesOrderID = @SalesOrderID
+
+			update inv.Stocks set Quantity -= @Quantity where ProductID = @ProductID and WarehouseID = @SrcWarehouseID
+				   
+		commit	   
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
+go
+
+-- =============================================
+-- SP_Invoice_Create - صدور فاکتور فروش
+-- اعتبارسنجی کد فاکتور، سفارش و مشتری
+-- کپی خودکار جزئیات از سفارش + محاسبه مبلغ نهایی با تخفیف
+-- =============================================
+create or alter proc SP_Invoice_Create
+@InvoiceCode nvarchar(20),
+@SalesOrderID int,
+@CustomerID int,
+@DiscountPercent decimal(5,2),
+@InvoiceID int output
+as begin
+	set nocount on
+	begin try
+		begin tran
+			if exists (select 1 from sls.Invoices where InvoiceCode = @InvoiceCode)
+			begin
+				select 'شماره فاکتور تکراری است' as err
+				rollback
+				return
+			end
+			if not exists (select 1 from sls.SalesOrders where SalesOrderID = @SalesOrderID)
+			begin
+				select 'شناسه سفارش خرید نامعتبر است' as err
+				rollback
+				return
+			end
+			if not exists (select 1 from sls.Customers where CustomerID = @CustomerID)
+			begin
+				select 'همچین مشتری وجود ندارد' as err
+				rollback
+				return
+			end
+
+			declare @Amount decimal(18,2) = (select TotalAmount from sls.SalesOrders where SalesOrderID = @SalesOrderID)
+
+			insert into sls.Invoices(InvoiceCode,SalesOrderID,CustomerID,InvoiceDate,Amount,DiscountPercent,FinalAmount,Status)
+			values(@InvoiceCode,@SalesOrderID,@CustomerID,getdate(),@Amount,@DiscountPercent,fnc.fn_CalcDiscount(@Amount,@DiscountPercent),'Pending')
+
+			set @InvoiceID = scope_identity()
+			insert into sls.InvoiceDetails(InvoiceID,ProductID,Quantity,UnitPrice)(
+			select @InvoiceID,ProductID,Quantity,UnitPrice
+			from sls.SalesOrderDetails where SalesOrderID = @SalesOrderID)
+		commit	   
+	end try		   
+				   
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
+go
+-- =============================================
+-- SP_GoodsReceipt_Create - رسید کالا به انبار
+-- اعتبارسنجی کد رسید و سفارش خرید
+-- ثبت خودکار رسید از روی جزئیات سفارش + آپدیت موجودی انبار
+-- =============================================
+create proc SP_GoodsReceipt_Create
+@ReceiptCode nvarchar(20),
+@PurchaseOrderID int
+as begin
+	set nocount on
+	begin try
+		begin tran
+			if exists (select 1 from prc.GoodsReceipts where ReceiptCode = @ReceiptCode)
+			begin
+				select 'شماره رسید تکراری است' as err
+				rollback
+				return
+			end
+			if not exists (select 1 from prc.PurchaseOrders where PurchaseOrderID = @PurchaseOrderID)
+			begin
+				select 'شناسه خرید نامعتبر است' as err
+				rollback
+				return
+			end
+			insert into prc.GoodsReceipts(ReceiptCode,PurchaseOrderID,WarehouseID,ProductID,Quantity,ReceiptDate,Status)
+			(
+			select 
+			@ReceiptCode,@PurchaseOrderID,
+			po.DestWarehouseID,
+			pod.ProductID,pod.Quantity,
+			getdate(),'Receipted'
+			from prc.PurchaseOrders po
+			inner join
+			prc.PurchaseOrderDetails pod on po.PurchaseOrderID = pod.PurchaseOrderID 
+			where po.PurchaseOrderID = @PurchaseOrderID
+			) 
+			update prc.PurchaseOrders set Status = 'Completed' where PurchaseOrderID = @PurchaseOrderID
+
+			update inv.Stocks set Quantity += gr.Quantity 
+			from prc.GoodsReceipts gr 
+			inner join 
+			inv.Stocks s on gr.ProductID = s.ProductID and gr.WarehouseID = s.WarehouseID
+			where gr.PurchaseOrderID = @PurchaseOrderID
+			
+
+		commit
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
+go
+-- =============================================
+-- SP_ProccessPayment - ثبت پرداخت فاکتور
+-- اعتبارسنجی فاکتور و مشتری + تطابق مبلغ پرداختی با مبلغ فاکتور
+-- تغییر وضعیت فاکتور به Paid
+-- =============================================
+create proc SP_ProccessPayment
+@InvoiceID int,
+@CustomerID int,
+@Amount decimal(18,2),
+@PaymentMethod nvarchar(20)
+as begin
+	set nocount on
+	begin try
+		begin tran
+			if not exists (select 1 from sls.Invoices where InvoiceID = @InvoiceID )
+			begin
+				select 'شماره فاکتور وارد شده معتبر نیست' as err
+				rollback
+				return
+			end
+			if not exists (select 1 from sls.Customers where CustomerID = @CustomerID )
+			begin
+				select 'شناسه مشتری وارد شده معتبر نیست' as err
+				rollback
+				return
+			end
+
+			declare @finalAmount decimal(18,2) = (select FinalAmount from sls.Invoices where InvoiceID = @InvoiceID)
+
+			if @Amount != @finalAmount
+			begin
+				select 'مبلغ پرداختی باید با مبلغ فاکتور یکی باشد' as err
+				rollback
+				return
+			end
+
+			insert into sls.Payments (InvoiceID,CustomerID,PaymentDate,Amount,PaymentMethod,Status)
+			values(@InvoiceID,@CustomerID,getdate(),@Amount,@PaymentMethod,'Paid')
+
+			update sls.Invoices set Status = 'Paid' where InvoiceID = @InvoiceID
+
+		commit	   
+	end try		   
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
+go
+-- =============================================
+-- SP_TransferStock - انتقال موجودی بین دو انبار
+-- اعتبارسنجی محصول، انبار مبدا و مقصد + موجودی کافی
+-- در صورت نبود کالا در انبار مقصد، رکورد جدید ایجاد می‌شود
+-- =============================================
+create proc SP_TransferStock
+@ProductID int,
+@Quantity int,
+@SrcWarehouseID int,
+@DestWarehouseID int 
+as begin
+	set nocount on
+	begin try
+		begin tran
+			if not exists (select 1 from inv.Products where ProductID = @ProductID)
+			begin
+				select 'محصول وارد شده نامعتبر است' as err
+				rollback
+				return
+			end
+			if not exists (select 1 from inv.Warehouses where WarehouseID = @SrcWarehouseID)
+			begin
+				select 'انبار مبدا وارد شده نامعتبر است' as err
+				rollback
+				return
+			end
+			if not exists (select 1 from inv.Warehouses where WarehouseID = @DestWarehouseID)
+			begin
+				select 'انبار مقصدوارد شده نامعتبر است' as err
+				rollback
+				return
+			end
+			if not exists (select 1 from inv.Stocks where WarehouseID = @SrcWarehouseID and ProductID = @ProductID)
+			begin
+				select 'انبار مبدا همچین محصولی نداره' as err
+				rollback
+				return
+			end
+			declare @Stock int = (select Quantity from inv.Stocks where ProductID = @ProductID and WarehouseID = @SrcWarehouseID)
+			if @Quantity > @Stock
+			begin
+				select 'موجودی کافی نمیباشد' as err
+				rollback
+				return
+			end
+			if not exists (select 1 from inv.Stocks where ProductID = @ProductID and WarehouseID = @DestWarehouseID)
+			begin
+				update inv.Stocks set Quantity -= @Quantity where ProductID = @ProductID and WarehouseID = @SrcWarehouseID
+				
+				insert into inv.Stocks (ProductID,WarehouseID,Quantity)
+				values(@ProductID,@DestWarehouseID,@Quantity)
+			end
+			else
+			begin
+				update inv.Stocks set Quantity -= @Quantity where ProductID = @ProductID and WarehouseID = @SrcWarehouseID
+				update inv.Stocks set Quantity += @Quantity where ProductID = @ProductID and WarehouseID = @DestWarehouseID
+			end
+		commit
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
+go
+-- =============================================
+-- SP_PurchaseOrders_Close - بستن سفارش خرید
+-- اعتبارسنجی وجود سفارش + چک وضعیت Completed/Cancelled
+-- =============================================
+create or alter proc SP_PurchaseOrders_Close
+@PurchaseOrderID int
+as begin
+	set nocount on
+	begin try
+		begin tran
+				if not exists (select 1 from prc.PurchaseOrders where PurchaseOrderID = @PurchaseOrderID)
+				begin
+					select 'شماره سفارش خرید وارد شده نامعتبر است' as err
+					rollback
+					return
+				end
+				declare @Status nvarchar(20) = (select Status from prc.PurchaseOrders where PurchaseOrderID = @PurchaseOrderID )
+
+				if @Status = 'Completed'
+				begin
+					select 'این سفارش از قبل بسته شده است' as err
+					rollback
+					return
+				end
+				if @Status = 'Cancelled'
+				begin
+					select 'سفارش لغو شده را نمیتوان بست' as err
+					rollback
+					return
+				end
+				update prc.PurchaseOrders set Status = 'Completed' where PurchaseOrderID = @PurchaseOrderID 
+		commit
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
+go
+-- =============================================
+-- SP_SalesOrders_Close - بستن سفارش فروش
+-- اعتبارسنجی وجود سفارش + چک وضعیت Completed/Cancelled
+-- =============================================
+create proc SP_SalesOrders_Close
+@SalesOrderID int
+as begin
+	set nocount on
+	begin try
+		begin tran
+				if not exists (select 1 from sls.salesOrders where SalesOrderID = @SalesOrderID)
+				begin
+					select 'شماره سفارش فروش وارد شده نامعتبر است' as err
+					rollback
+					return
+				end
+				declare @Status nvarchar(20) = (select Status from sls.salesOrders where SalesOrderID = @SalesOrderID )
+
+				if @Status = 'Completed'
+				begin
+					select 'این سفارش از قبل بسته شده است' as err
+					rollback
+					return
+				end
+				if @Status = 'Cancelled'
+				begin
+					select 'سفارش لغو شده را نمیتوان بست' as err
+					rollback
+					return
+				end
+				update sls.salesOrders set Status = 'Completed' where SalesOrderID = @SalesOrderID 
+		commit
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
+go
+-- =============================================
+-- SP_AdjustStock - اصلاح موجودی (انبارگردانی)
+-- اعتبارسنجی محصول، انبار و وجود کالا در انبار
+-- جایگزینی موجودی با عدد جدید
+-- =============================================
+create proc SP_AdjustStock
+@ProductID int,
+@WarehouseID int,
+@NewQuantity int
+as begin
+	set nocount on
+	begin try
+		begin tran
+			if not exists (select 1 from inv.Products where ProductID = @ProductID)
+			begin
+				select 'محصول وارد شده نامعتبر است' as err
+				rollback
+				return
+			end
+			if not exists (select 1 from inv.Warehouses where WarehouseID = @WarehouseID)
+			begin
+				select 'انبار وارد شده نامعتبر است' as err
+				rollback
+				return
+			end
+			if not exists (select 1 from inv.Stocks where WarehouseID = @WarehouseID and ProductID = @ProductID)
+			begin
+				select 'انبار وارد شده همچین محصولی نداره' as err
+				rollback
+				return
+			end
+			update inv.Stocks set Quantity = @NewQuantity where WarehouseID = @WarehouseID and ProductID = @ProductID
+		commit
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
+go
+-- =============================================
+-- SP_ReturnProduct - مرجوعی کالا از فاکتور
+-- اعتبارسنجی فاکتور، محصول و وجود محصول در فاکتور
+-- برگشت موجودی به انبار مبدا
+-- =============================================
+create proc SP_ReturnProduct
+@InvoiceID int,
+@ProductID int,
+@Quantity int
+as begin
+	set nocount on
+	begin try
+		begin tran
+			if not exists (select 1 from sls.Invoices where InvoiceID = @InvoiceID)
+			begin
+				select 'شماره فاکتور وارد شده نامعتبر است' as err
+				rollback
+				return
+			end
+			if not exists (select 1 from inv.Products where ProductID = @ProductID)
+			begin
+				select 'محصول وارد شده نامعتبر است' as err
+				rollback
+				return
+			end
+			if not exists(select 1 from sls.InvoiceDetails where InvoiceID = @InvoiceID and ProductID = @ProductID)
+			begin
+				select 'فاکتور وارد شده شامل همچین محصولی نمی باشد' as err
+				rollback
+				return
+			end
+			declare @WarehoseID int = (
+			select so.SrcWarehouseID
+			from sls.SalesOrders so
+			inner join 
+			sls.Invoices i on so.SalesOrderID = i.SalesOrderID
+			where i.InvoiceID = @InvoiceID
+			)
+			update inv.Stocks set Quantity += @Quantity where WarehouseID = @WarehoseID and ProductID = @ProductID
+		commit
+	end try
+
+	begin catch
+		rollback
+		select ERROR_MESSAGE() as ErrorMassage
+	end catch
+end
+go
