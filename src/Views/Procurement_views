@@ -1,0 +1,102 @@
+-- =============================================
+-- Schema: prc (Procurement - ویوهای خرید و تأمین)
+-- =============================================
+
+-- =============================================
+-- Vw_PurchaseOrderFull - اطلاعات کامل سفارش خرید
+-- شامل: محصولات، تأمین‌کننده، انبار، رسید
+-- =============================================
+create or alter view prc.Vw_PurchaseOrderFull as select 
+po.PurchaseOrderID,
+po.PurchaseOrderCode,
+p.ProductName,
+p.ProductCode,
+pod.Quantity ,
+pod.UnitPrice,
+s.SupplierCode,
+s.ContactPerson,
+w.WarehouseName,
+isnull(gr.ReceiptCode,'ندارد') ReceiptCode,
+isnull(gr.ReceiptDate,cast('ندارد' as datetime)) ReceiptDate
+from prc.PurchaseOrders po 
+inner join 
+prc.PurchaseOrderDetails pod on po.PurchaseOrderID = pod.PurchaseOrderID
+inner join 
+prc.Suppliers s on po.SupplierID = s.SupplierID
+inner join 
+inv.Products p on pod.ProductID = p.ProductID
+inner join 
+inv.Warehouses w on po.DestWarehouseID = w.WarehouseID
+left join
+prc.GoodsReceipts gr on po.PurchaseOrderID = gr.PurchaseOrderID
+go
+
+-- =============================================
+-- Vw_SupplierPerformance - عملکرد تأمین‌کنندگان
+-- تعداد سفارش، میانگین قیمت، میانگین زمان تحویل
+-- =============================================
+create view prc.Vw_SupplierPerformance as select 
+s.SupplierID,
+s.SupplierCode,
+s.CompanyID,
+Count(po.PurchaseOrderID) as OrderCount,
+AVG(po.TotalAmount) as AvgUnitPrice,
+AVG(DATEDIFF(day,po.OrderDate,gr.ReceiptDate)) AvgDeliveryDays 
+from prc.Suppliers s 
+inner join 
+prc.PurchaseOrders po on s.SupplierID = po.SupplierID
+inner join 
+prc.GoodsReceipts gr on po.PurchaseOrderID = gr.PurchaseOrderID
+group by s.SupplierID,s.SupplierCode,s.CompanyID
+go
+
+-- =============================================
+-- vw_PendingDeliveries - سفارشات در انتظار تحویل
+-- فیلتر: Status = 'Pending'
+-- =============================================
+create or alter view prc.vw_PendingDeliveries as select 
+po.PurchaseOrderID,
+po.PurchaseOrderCode,
+po.OrderDate,
+s.SupplierCode,
+s.CompanyID,
+w.WarehouseName,
+po.TotalAmount
+from prc.PurchaseOrders po
+inner join prc.Suppliers s on po.SupplierID = s.SupplierID
+inner join inv.Warehouses w on po.DestWarehouseID = w.WarehouseID
+where po.Status = 'Pending'
+go
+
+-- =============================================
+-- Vw_PurchaseCostAnalysis - تحلیل هزینه خرید هر محصول
+-- میانگین، بیشترین و کمترین قیمت خرید
+-- =============================================
+create view prc.Vw_PurchasecostAnalysis as select
+p.ProductID,
+p.ProductCode,
+p.ProductName,
+AVG(pod.UnitPrice)AvgPrice,
+MAX(pod.UnitPrice)MaxPrice,
+MIN(pod.UnitPrice) MinPrice
+from inv.Products p 
+inner join 
+prc.PurchaseOrderDetails pod on p.ProductID = pod.ProductID
+group by p.ProductID,p.ProductCode,p.ProductName
+go
+
+-- =============================================
+-- vw_ReceiptEfficiency - کارایی رسید (زمان تحویل)
+-- محاسبه فاصله روز بین سفارش و رسید
+-- =============================================
+create view prc.vw_ReceiptEfficiency as select
+po.PurchaseOrderID,
+po.PurchaseOrderCode,
+po.OrderDate,
+gr.ReceiptDate,
+DATEDIFF(day,po.OrderDate,gr.ReceiptDate) as DeliveryDays
+from prc.PurchaseOrders po
+inner join 
+prc.GoodsReceipts gr on po.PurchaseOrderID = gr.PurchaseOrderID
+group by po.PurchaseOrderID,po.PurchaseOrderCode,po.OrderDate,gr.ReceiptDate
+go
