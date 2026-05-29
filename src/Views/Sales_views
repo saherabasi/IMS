@@ -1,0 +1,119 @@
+-- =============================================
+-- Schema: sls (Sales - ویوهای فروش و مشتریان)
+-- =============================================
+
+-- =============================================
+-- vw_CustomerFullProfile - پروفایل کامل مشتری
+-- شامل: مجموع خرید، نوع مشتری، رتبه، آخرین خرید
+-- =============================================
+create view sls.vw_CustomerFullProfile as select
+c.CustomerID,
+c.FirstName + ' ' + c.LastName as FullCustomerName,
+c.NationalCode,
+ct.TypeName,
+ct.DiscountPercent,
+SUM(iv.FinalAmount) as TotalPurchase,
+sls.fn_GetCustomerRank(c.CustomerID) as Rank,
+ca.OrderDate
+from sls.Customers c
+inner join 
+sls.Invoices iv on c.CustomerID = iv.CustomerID
+inner join 
+sls.CustomerTypes ct on c.CustomerTypeID = ct.CustomerTypeID
+cross apply (
+select top 1 
+so.OrderDate
+from sls.SalesOrders so 
+where so.CustomerID = c.CustomerID
+order by so.OrderDate desc
+) ca
+group by c.CustomerID,c.FirstName + ' ' + c.LastName,c.NationalCode,
+		 ct.TypeName,ct.DiscountPercent,sls.fn_GetCustomerRank(c.CustomerID),ca.OrderDate
+go
+
+-- =============================================
+-- vw_SalesProfitAnalysis - تحلیل سود هر ردیف فروش
+-- فرمول: (قیمت فروش × تعداد) - (آخرین قیمت خرید × تعداد)
+-- =============================================
+create view sls.vw_SalesProfitAnalysis as select
+so.SalesOrderID,
+so.SalesOrderCode,
+p.ProductName,
+sod.Quantity,
+so.OrderDate,
+sod.UnitPrice * sod.Quantity as TotalAmountSalesOrder,
+ca.UnitPrice * sod.Quantity as TotalAmountPurchaseOrder,
+(sod.UnitPrice * sod.Quantity) - (ca.UnitPrice * sod.Quantity) as Profit
+from sls.SalesOrders so
+inner join 
+sls.SalesOrderDetails sod on so.SalesOrderID = sod.SalesOrderID
+inner join 
+inv.Products p on sod.ProductID = p.ProductID
+cross apply(
+select top 1 
+pod.UnitPrice
+from prc.PurchaseOrderDetails pod 
+inner join 
+prc.PurchaseOrders po on pod.PurchaseOrderID = po.PurchaseOrderID
+where pod.ProductID = sod.ProductID
+order by po.OrderDate desc
+)ca
+go
+
+-- =============================================
+-- vw_DailySalesSummary - خلاصه فروش روزانه
+-- شامل: تعداد فاکتور، مبلغ کل، مبلغ نهایی
+-- =============================================
+create view sls.vw_DailySalesSummary as select 
+cast(i.InvoiceDate as date) as SalesDate,
+count(*) as InvoiceCount,
+sum(i.Amount) as TotalSales,
+sum(i.FinalAmount) as NetSales
+from sls.Invoices i
+group by cast(i.InvoiceDate as date)
+go
+
+-- =============================================
+-- vw_InvoiceFullDetail - فاکتور کامل با مشتری، محصولات و پرداخت‌ها
+-- نمایش تمام جزئیات یک فاکتور به صورت ردیفی
+-- =============================================
+create view sls.vw_InvoiceFullDetail as select
+i.InvoiceID,
+i.InvoiceCode,
+i.InvoiceDate,
+i.Status as InvoiceStatus,
+c.CustomerID,
+c.FirstName + ' ' + c.LastName as CustomerName,
+p.ProductID,
+p.ProductName,
+id.Quantity,
+id.UnitPrice,
+id.TotalPrice as RowTotal,
+i.DiscountPercent,
+i.FinalAmount,
+pay.PaymentID,
+pay.PaymentDate,
+pay.Amount as PaidAmount,
+pay.PaymentMethod,
+pay.Status as PaymentStatus
+from sls.Invoices i
+inner join sls.Customers c on i.CustomerID = c.CustomerID
+inner join sls.InvoiceDetails id on i.InvoiceID = id.InvoiceID
+inner join inv.Products p on id.ProductID = p.ProductID
+left join sls.Payments pay on i.InvoiceID = pay.InvoiceID
+go
+
+-- =============================================
+-- vw_TopSellingProducts - کالاهای پرفروش با رتبه‌بندی
+-- رتبه‌بندی بر اساس تعداد فروش (Quantity) به صورت نزولی
+-- =============================================
+create view sls.vw_TopSellingProducts as select
+p.ProductID,
+p.ProductCode,
+p.ProductName,
+sum(id.Quantity) as TotalSold,
+row_number() over (order by sum(id.Quantity) desc) as Rank
+from inv.Products p
+inner join sls.InvoiceDetails id on p.ProductID = id.ProductID
+inner join sls.Invoices i on id.InvoiceID = i.InvoiceID
+group by p.ProductID, p.ProductCode, p.ProductName
