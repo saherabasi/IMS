@@ -1,0 +1,102 @@
+---------------------------
+--Products
+---------------------------
+
+-- جستجوی کالا با کد یا نام
+create nonclustered index IX_Products_Code_Name on inv.Products(ProductCode, ProductName)
+include (CategoryID, BrandID, UnitID, Barcode, IsActive)
+
+-- فیلتر بر اساس دسته‌بندی
+create nonclustered index IX_Products_Category_Active on inv.Products(CategoryID, IsActive)
+include (ProductName, ProductCode, BrandID)
+
+-- فیلتر بر اساس برند
+create nonclustered index IX_Products_Brand_Active on inv.Products(BrandID, IsActive)
+include (ProductName, ProductCode, CategoryID)
+
+-- گزارش محصولات فعال
+create nonclustered index IX_Products_Active on inv.Products(IsActive)
+include (ProductName, ProductCode, CategoryID, BrandID, UnitID)
+
+---------------------------
+--Stocks
+---------------------------
+-- موجودی هر کالا در همه انبارها
+create nonclustered index IX_Stocks_Product_Warehouse_Qty on inv.Stocks(ProductID, WarehouseID)
+include (Quantity)
+
+-- موجودی هر انبار
+create nonclustered index IX_Stocks_Warehouse_Product on inv.Stocks(WarehouseID, ProductID)
+include (Quantity)
+
+-- کالاهای زیر حداقل
+create nonclustered index IX_Stocks_Quantity on inv.Stocks(Quantity)
+include (ProductID, WarehouseID)
+
+
+---------------------------
+--Sales
+---------------------------
+-- سفارشات هر مشتری با تاریخ
+create nonclustered index IX_SalesOrders_Customer_Date on sls.SalesOrders(CustomerID, OrderDate desc)
+include (SalesOrderCode, Status, TotalAmount)
+
+-- جزئیات سفارش برای JOIN
+create nonclustered index IX_SalesOrderDetails_Order_Product on sls.SalesOrderDetails(SalesOrderID, ProductID)
+include (Quantity, UnitPrice, TotalPrice)
+
+-- فاکتورهای هر مشتری
+create nonclustered index IX_Invoices_Customer_Date on sls.Invoices(CustomerID, InvoiceDate desc)
+include (InvoiceCode, FinalAmount, Status, DiscountPercent)
+
+-- جزئیات فاکتور
+create nonclustered index IX_InvoiceDetails_Invoice_Product on sls.InvoiceDetails(InvoiceID, ProductID)
+include (Quantity, UnitPrice, TotalPrice)
+
+
+---------------------------
+--Purchase
+---------------------------
+-- سفارشات هر تأمین‌کننده
+create nonclustered index IX_PurchaseOrders_Supplier_Date on prc.PurchaseOrders(SupplierID, OrderDate desc)
+include (PurchaseOrderCode, Status, TotalAmount)
+
+-- جزئیات سفارش خرید
+create nonclustered index IX_PurchaseOrderDetails_Order_Product on prc.PurchaseOrderDetails(PurchaseOrderID, ProductID)
+include (Quantity, UnitPrice, TotalPrice)
+
+-- رسیدها
+create nonclustered index IX_GoodsReceipts_Order on prc.GoodsReceipts(PurchaseOrderID, ProductID)
+include (Quantity, ReceiptDate, Status)
+
+
+---------------------------
+--Finance 
+---------------------------
+-- تراکنش‌های هر حساب
+create nonclustered index IX_Transactions_Account_Date on fnc.Transactions(AccountID, TransactionDate desc)
+include (Amount, TransactinTypeID, CostCenterID, Description)
+
+-- تراکنش‌های امروز
+create nonclustered index IX_Transactions_Date_Type on fnc.Transactions(TransactionDate, TransactinTypeID)
+include (AccountID, Amount)
+
+-- تراکنش‌های هر مرکز هزینه
+create nonclustered index IX_Transactions_CostCenter on fnc.Transactions(CostCenterID)
+include (AccountID, Amount, TransactionDate)
+
+-- پرداخت‌ها
+create nonclustered index IX_Payments_Invoice on sls.Payments(InvoiceID)
+include (CustomerID, Amount, PaymentDate, PaymentMethod, Status)
+
+
+---------------------------
+--Users & Logs
+---------------------------
+-- لاگین کاربر
+create nonclustered index IX_Users_Username_Pass on usr.Users(Username)
+include (Password, IsActive, Email)
+
+-- لاگ تغییرات موجودی
+create nonclustered index IX_StockLogs_Product_Date on log.StockLogs(ProductID, ChangeDate desc)
+include (WarehouseID, OldQuantity, NewQuantity, ChangeQuantity, Reason)
