@@ -1,0 +1,159 @@
+-- =============================================
+-- Seed Data - داده‌های نمونه برای تست
+-- =============================================
+
+-- Countries
+insert into pub.Countries (CountryName) values 
+(N'ایران'), (N'چین'), (N'کره جنوبی'), (N'آلمان'), (N'ژاپن'), (N'ایتالیا'), (N'فرانسه');
+
+-- Units
+insert into inv.Units (UnitName, Symbol) values 
+(N'عدد', N'pcs'), (N'کیلوگرم', N'kg'), (N'متر', N'm'), (N'لیتر', N'L'), (N'بسته', N'pack');
+
+-- Categories
+insert into inv.Categories (CategoryName, ParentCategoryID, Description) values 
+(N'الکترونیک', null, N'محصولات الکترونیکی'),
+(N'موبایل', 1, N'گوشی تلفن همراه'),
+(N'لپ‌تاپ', 1, N'کامپیوتر قابل حمل'),
+(N'مواد غذایی', null, N'خوراکی و تنقلات'),
+(N'نوشیدنی', 4, N'انواع نوشیدنی'),
+(N'پوشاک', null, N'لباس و منسوجات');
+
+-- Brands
+insert into inv.Brands (BrandName, CountryID, Website) values 
+(N'سامسونگ', 3, N'www.samsung.com'),
+(N'اپل', 5, N'www.apple.com'),
+(N'شیائومی', 2, N'www.xiaomi.com'),
+(N'الجی', 3, N'www.lg.com'),
+(N'نایک', 6, N'www.nike.com'),
+(N'آدیداس', 6, N'www.adidas.com');
+
+-- Products
+insert into inv.Products (ProductCode, ProductName, CategoryID, BrandID, UnitID, Barcode, Description) values 
+(N'PRD-001', N'گوشی سامسونگ A54', 2, 1, 1, N'8806091234567', N'میان رده محبوب'),
+(N'PRD-002', N'گوشی آیفون 15', 2, 2, 1, N'8806091234568', N'پرچمدار اپل'),
+(N'PRD-003', N'گوشی شیائومی 13T', 2, 3, 1, N'8806091234569', N'پرچمدار اقتصادی'),
+(N'PRD-004', N'لپ‌تاپ سامسونگ Galaxy Book', 3, 1, 1, N'8806091234570', N'لپ‌تاپ ویندوزی'),
+(N'PRD-005', N'لپ‌تاپ مک‌بوک پرو', 3, 2, 1, N'8806091234571', N'لپ‌تاپ اپل'),
+(N'PRD-006', N'نوشابه کوکاکولا', 5, null, 4, N'8806091234572', N'نوشیدنی گازدار'),
+(N'PRD-007', N'کفش ورزشی نایک', 6, 5, 1, N'8806091234573', N'کفش دویدن'),
+(N'PRD-008', N'تیشرت آدیداس', 6, 6, 1, N'8806091234574', N'تیشرت نخی');
+
+-- Warehouses
+insert into inv.Warehouses (WarehouseName, WarehouseCode, Address, Phone) values 
+(N'انبار مرکزی تهران', N'WH-001', N'تهران، جاده مخصوص', N'021-12345678'),
+(N'انبار شمال', N'WH-002', N'مشهد، شهرک صنعتی', N'051-87654321'),
+(N'انبار جنوب', N'WH-003', N'اصفهان، منطقه صنعتی', N'031-55667788');
+
+-- Stocks
+insert into inv.Stocks (ProductID, WarehouseID, Quantity) values 
+(1, 1, 50), (1, 2, 20), (2, 1, 30), (2, 3, 15), (3, 1, 100), (3, 2, 60),
+(4, 1, 25), (5, 1, 10), (6, 1, 500), (6, 2, 300), (7, 1, 80), (8, 1, 120);
+
+-- CustomerTypes
+insert into sls.CustomerTypes (TypeName, DiscountPercent, Description) values 
+(N'عادی', 0, N'مشتری عادی'),
+(N'عمده', 5, N'خریدار عمده'),
+(N'VIP', 10, N'مشتری ویژه');
+
+-- Customers
+insert into sls.Customers (FirstName, LastName, PhoneNumber, NationalCode, CustomerTypeID, Address) values 
+(N'علی', N'رضایی', N'09121234567', N'1234567890', 3, N'تهران، خیابان ولیعصر'),
+(N'مریم', N'احمدی', N'09131234568', N'2345678901', 1, N'مشهد، احمدآباد'),
+(N'حسین', N'محمدی', N'09141234569', N'3456789012', 2, N'اصفهان، چهارباغ'),
+(N'سارا', N'کریمی', N'09151234570', N'4567890123', 1, N'تبریز، ولیعصر'),
+(N'رضا', N'موسوی', N'09161234571', N'5678901234', 3, N'تهران، سعادت‌آباد');
+
+-- Suppliers
+insert into prc.Suppliers (SupplierCode, CompanyID, ContactPerson, Phone, Email, Address, CountryID) values 
+(N'SUP-001', null, N'علی حسینی', N'09121234567', N'ali@supply.com', N'تهران، بازار بزرگ', 1),
+(N'SUP-002', null, N'محمد کریمی', N'09131234568', N'mohammad@supply.com', N'سئول، گانگنام', 3),
+(N'SUP-003', null, N'یامادا تاناکا', N'09141234569', N'yamada@supply.com', N'توکیو، شیبویا', 5);
+
+-- PurchaseOrders
+insert into prc.PurchaseOrders (PurchaseOrderCode, SupplierID, DestWarehouseID, OrderDate, Status) values 
+(N'PO-001', 1, 1, dateadd(day, -10, getdate()), 'Completed'),
+(N'PO-002', 2, 2, dateadd(day, -5, getdate()), 'Completed'),
+(N'PO-003', 3, 1, dateadd(day, -2, getdate()), 'Pending');
+
+-- PurchaseOrderDetails
+insert into prc.PurchaseOrderDetails (PurchaseOrderID, ProductID, Quantity, UnitPrice) values 
+(1, 1, 20, 8500000),
+(1, 3, 50, 12000000),
+(2, 4, 15, 25000000),
+(2, 2, 25, 35000000),
+(3, 6, 200, 15000),
+(3, 8, 100, 350000);
+
+-- GoodsReceipts
+insert into prc.GoodsReceipts (ReceiptCode, PurchaseOrderID, WarehouseID, ProductID, Quantity, ReceiptDate, Status) values 
+(N'GR-001', 1, 1, 1, 20, dateadd(day, -8, getdate()), N'Receive'),
+(N'GR-002', 1, 1, 3, 50, dateadd(day, -8, getdate()), N'Receive'),
+(N'GR-003', 2, 2, 4, 15, dateadd(day, -3, getdate()), N'Receive');
+
+-- SalesOrders
+insert into sls.SalesOrders (SalesOrderCode, CustomerID, SrcWarehouseID, OrderDate, Status) values 
+(N'SO-001', 1, 1, dateadd(day, -7, getdate()), 'Completed'),
+(N'SO-002', 2, 2, dateadd(day, -3, getdate()), 'Completed'),
+(N'SO-003', 3, 1, dateadd(day, -1, getdate()), 'Pending');
+
+-- SalesOrderDetails
+insert into sls.SalesOrderDetails (SalesOrderID, ProductID, Quantity, UnitPrice) values 
+(1, 1, 2, 12000000),
+(1, 3, 1, 16000000),
+(2, 6, 50, 20000),
+(2, 8, 10, 500000),
+(3, 7, 5, 2500000);
+
+-- Invoices
+insert into sls.Invoices (InvoiceCode, SalesOrderID, CustomerID, InvoiceDate, Amount, DiscountPercent, FinalAmount, Status, TaxID) values 
+(N'INV-001', 1, 1, dateadd(day, -7, getdate()), 40000000, 10, 36000000, 'Paid', null),
+(N'INV-002', 2, 2, dateadd(day, -3, getdate()), 6000000, 0, 6000000, 'Paid', null),
+(N'INV-003', 3, 3, dateadd(day, -1, getdate()), 12500000, 5, 11875000, 'Pending', null);
+
+-- InvoiceDetails
+insert into sls.InvoiceDetails (InvoiceID, ProductID, Quantity, UnitPrice) values 
+(1, 1, 2, 12000000),
+(1, 3, 1, 16000000),
+(2, 6, 50, 20000),
+(2, 8, 10, 500000),
+(3, 7, 5, 2500000);
+
+-- Payments
+insert into sls.Payments (InvoiceID, CustomerID, PaymentDate, Amount, PaymentMethod, Status) values 
+(1, 1, dateadd(day, -6, getdate()), 36000000, N'کارت به کارت', N'Paid'),
+(2, 2, dateadd(day, -2, getdate()), 6000000, N'نقدی', N'Paid');
+
+-- TransactionTypes
+insert into fnc.TransactionTypes (TransactionType) values (N'واریز'), (N'برداشت');
+
+-- Accounts
+insert into fnc.Accounts (AccountNumber, AccountName, AccountType, Currency, Balance) values 
+(N'110-001', N'صندوق', N'Cash', N'IRR', 50000000),
+(N'110-002', N'بانک ملت', N'Bank', N'IRR', 200000000),
+(N'110-003', N'بانک ملی', N'Bank', N'IRR', 150000000);
+
+-- Transactions
+insert into fnc.Transactions (AccountID, TransactinTypeID, Amount, TransactionDate, Description) values 
+(1, 1, 36000000, dateadd(day, -6, getdate()), N'پرداخت فاکتور INV-001'),
+(1, 1, 6000000, dateadd(day, -2, getdate()), N'پرداخت فاکتور INV-002'),
+(2, 2, 20000000, dateadd(day, -5, getdate()), N'برداشت برای هزینه‌های جاری');
+
+-- Taxes
+insert into fnc.Taxes (TaxName, TaxRate, Description) values 
+(N'مالیات برارزش افزوده', 9, N'مالیات بر ارزش افزوده'),
+(N'مالیات بر حقوق', 9, N'مالیات حقوق کارمندان');
+
+-- Positions
+insert into pub.Positions (PositionName, Description) values 
+(N'مدیر انبار', N'مسئول مدیریت انبار'),
+(N'انباردار', N'کارمند انبار'),
+(N'حسابدار', N'مسئول امور مالی'),
+(N'فروشنده', N'مسئول فروش');
+
+-- Employees
+insert into pub.Employees (WarehouseID, FirstName, LastName, NationalCode, PositionID, Email, PhoneNumber, HireDate, Salary, CommissionRate) values 
+(1, N'جعفر', N'خالقی', N'1111111111', 1, N'jafar@company.com', N'09111111111', '2024-01-01', 25000000, 2),
+(1, N'مینا', N'دهقان', N'2222222222', 2, N'mina@company.com', N'09222222222', '2024-03-15', 15000000, 1),
+(2, N'بهرام', N'گودرزی', N'3333333333', 1, N'bahram@company.com', N'09333333333', '2023-06-01', 28000000, 2),
+(null, N'آزاده', N'فلاح', N'4444444444', 3, N'azadeh@company.com', N'09444444444', '2024-02-20', 18000000, 0);
