@@ -1,0 +1,97 @@
+-- =============================================
+-- Schema: fnc (Finance - ویوهای مالی)
+-- =============================================
+
+-- =============================================
+-- Vw_FinancialDashboard - داشبورد مالی
+-- نمایش یکپارچه وضعیت مالی امروز (حساب‌ها، تراکنش‌ها، فروش، خرید)
+-- =============================================
+create view fnc.Vw_Financialdashboard as select
+(select count(*) from fnc.Accounts) as TotalAccount,
+(select sum(Balance) from fnc.Accounts) as TotalBalance,
+(select sum(Amount) from fnc.Transactions t 
+inner join
+fnc.TransactionTypes tt on t.TransactinTypeID = tt.TransactionTypeID
+where tt.TransactionType = 'Deposit' and cast(TransactionDate as date) = cast(GETDATE()as date)) as TodayDeposite,
+(select sum(Amount) from fnc.Transactions t 
+inner join
+fnc.TransactionTypes tt on t.TransactinTypeID = tt.TransactionTypeID
+where tt.TransactionType = 'Withdraw' and cast(TransactionDate as date) = cast(GETDATE()as date)) as TodayWithdraw,
+(select sum(TotalAmount) from prc.PurchaseOrders where cast(OrderDate as date) = cast(GETDATE()as date)) as TodayPurchases,
+(select sum(FinalAmount) from sls.Invoices where cast(InvoiceDate as date) = cast(GETDATE()as date)) as TodaySales
+go
+
+-- =============================================
+-- Vw_MonthlyProfitLoss - صورت سود و زیان ماهانه
+-- مقایسه فروش و خرید ماه جاری با وضعیت سود/زیان
+-- =============================================
+create view fnc.Vw_MonthlyProfitLoss as select
+year(getdate()) as Year,
+month(getdate()) as Month,
+po.TotalAmount TotalPurchase,
+ca.FinalAmount Totalsales,
+ca.FinalAmount - po.TotalAmount as Profit,
+iif(ca.FinalAmount > po.TotalAmount,'سود','ضرر') as Status
+from
+(select isnull(sum(po.TotalAmount),0) TotalAmount from prc.PurchaseOrders po 
+where format(OrderDate,'yyyy-MM') = FORMAT(GETDATE(),'yyyy-MM')) as po
+cross apply (
+select isnull(sum(iv.FinalAmount),0) FinalAmount from sls.Invoices iv 
+where format(InvoiceDate,'yyyy-MM') = FORMAT(GETDATE(),'yyyy-MM')) as ca
+go
+
+-- =============================================
+-- vw_TransactionDetail - جزئیات تراکنش‌های مالی
+-- نمایش نوع تراکنش، حساب، مبلغ و مرکز هزینه
+-- =============================================
+create view fnc.vw_TransactionDetail as select
+t.TransactionID,
+tt.TransactionType,
+a.AccountNumber,
+a.AccountName,
+a.AccountType,
+t.Amount,
+cc.CostCenterName,
+cc.Description,
+t.TransactionDate
+from fnc.Transactions t
+inner join
+fnc.Accounts a on t.AccountID = a.AccountID
+inner join
+fnc.TransactionTypes tt on t.TransactinTypeID = tt.TransactionTypeID
+left join 
+fnc.CostCenters cc on t.CostCenterID = cc.CostCenterID
+go
+
+-- =============================================
+-- VW_TaxLiability - بدهی مالیاتی هر فاکتور
+-- محاسبه مالیات بر اساس نرخ تعیین شده در جدول Taxes
+-- =============================================
+create view fnc.VW_TaxLiability as select
+iv.InvoiceID,
+iv.InvoiceCode,
+iv.FinalAmount,
+isnull(t.taxRate,0) TaxRate,
+ca.TaxAmount
+from sls.Invoices iv 
+left join 
+fnc.Taxes t on iv.TaxID = t.TaxID
+cross apply(
+select fnc.fn_CalcTax(iv.FinalAmount,t.taxRate) as TaxAmount
+) ca
+go
+
+-- =============================================
+-- Vw_CashFlow - جریان نقدینگی ماهانه
+-- مجموع واریزها و برداشت‌ها به تفکیک ماه
+-- =============================================
+create view fnc.Vw_CashFlow as select
+year(t.TransactionDate) as Year,
+month(t.TransactionDate) as Month,
+sum(case when tt.TransactionType = 'Deposit' then t.Amount else 0 end) as TotalDeposit,
+sum(case when tt.TransactionType = 'Withdraw' then t.Amount else 0 end) as TotalWithdraw
+from fnc.Transactions t 
+inner join 
+fnc.TransactionTypes tt on t.TransactinTypeID = tt.TransactionTypeID
+group by year(t.TransactionDate),month(t.TransactionDate)
+go
