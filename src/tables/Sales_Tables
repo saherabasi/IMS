@@ -109,3 +109,4 @@ create table sls.Payments(
     PaymentMethod nvarchar(20),
     Status nvarchar(20) default 'Paid',
 )
+alter table sls.Invoices add TaxID int null references fnc.Taxes(TaxID)
