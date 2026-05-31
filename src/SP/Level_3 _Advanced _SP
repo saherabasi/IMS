@@ -176,9 +176,9 @@ as begin
 				rollback
 				return
 			end
-			if not exists (select 1 from inv.Products where ProductID = @ProductID)
-			begin 
-				select 'همچین محصولی در انبار وجود ندارد' as err
+			if not exists (select 1 from inv.Stocks where WarehouseID = @WarehouseID and ProductID = @ProductID)
+			begin
+				select 'انبار وارد شده همچین محصولی نداره' as err
 				rollback
 				return
 			end
