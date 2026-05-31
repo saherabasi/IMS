@@ -171,6 +171,12 @@ as begin
 				return
 			end
 			if not exists (select 1 from inv.Products where ProductID = @ProductID)
+			begin
+				select 'محصول وارد شده نامعتبر است' as err
+				rollback
+				return
+			end
+			if not exists (select 1 from inv.Products where ProductID = @ProductID)
 			begin 
 				select 'همچین محصولی در انبار وجود ندارد' as err
 				rollback
