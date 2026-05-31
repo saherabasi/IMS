@@ -194,29 +194,24 @@ go
 -- اعتبارسنجی کد رسید و سفارش خرید
 -- ثبت خودکار رسید از روی جزئیات سفارش + آپدیت موجودی انبار
 -- =============================================
-create proc SP_GoodsReceipt_Create
-@ReceiptCode nvarchar(20),
+create or alter proc [dbo].[SP_GoodsReceipt_Create]
 @PurchaseOrderID int
 as begin
 	set nocount on
 	begin try
 		begin tran
-			if exists (select 1 from prc.GoodsReceipts where ReceiptCode = @ReceiptCode)
-			begin
-				select 'شماره رسید تکراری است' as err
-				rollback
-				return
-			end
 			if not exists (select 1 from prc.PurchaseOrders where PurchaseOrderID = @PurchaseOrderID)
 			begin
 				select 'شناسه خرید نامعتبر است' as err
 				rollback
 				return
 			end
+			declare @ReceiptCode nvarchar(20) = 'GR-' + cast(format(getdate(),'HHmmssfff') as nvarchar)
 			insert into prc.GoodsReceipts(ReceiptCode,PurchaseOrderID,WarehouseID,ProductID,Quantity,ReceiptDate,Status)
 			(
 			select 
-			@ReceiptCode,@PurchaseOrderID,
+			@ReceiptCode+ N'-' + cast(row_number() over (order by pod.PodID) as nvarchar(5)),
+			@PurchaseOrderID,
 			po.DestWarehouseID,
 			pod.ProductID,pod.Quantity,
 			getdate(),'Receipted'
@@ -242,7 +237,7 @@ as begin
 		select ERROR_MESSAGE() as ErrorMassage
 	end catch
 end
-go
+GO
 -- =============================================
 -- SP_ProccessPayment - ثبت پرداخت فاکتور
 -- اعتبارسنجی فاکتور و مشتری + تطابق مبلغ پرداختی با مبلغ فاکتور
